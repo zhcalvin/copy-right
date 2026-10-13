@@ -1,0 +1,49 @@
+{
+  "project_id": "sample",
+  "version": 1,
+  "characters": [
+    {"character_id": "char_a", "name": "A", "description": "A woman around thirty, short hair, beige sweater", "reference_images": [], "voice": null}
+  ],
+  "scenes": [
+    {"scene_id": "scene_kitchen", "description": "Apartment kitchen in daytime, south-facing window", "reference_images": []},
+    {"scene_id": "scene_hallway", "description": "Hallway outside the apartment door", "reference_images": []}
+  ],
+  "shots": [
+    {
+      "shot_id": "s001",
+      "source": {"clip": "clips/s001.mp4", "start": 0.0, "end": 3.5, "keyframes": ["frames/s001_0.jpg", "frames/s001_1.jpg", "frames/s001_2.jpg"]},
+      "narrative": {
+        "description": "Wide shot of the kitchen. A is chopping vegetables at the counter.",
+        "characters": [{"character_id": "char_a", "action": "chops vegetables", "expression": "calm"}],
+        "dialogue": [],
+        "beats": []
+      },
+      "visual": {"shot_size": "wide", "camera_motion": "static", "composition": "A is just right of center", "lighting": "warm natural light from the window"},
+      "assets": {"scene_id": "scene_kitchen", "character_ids": ["char_a"], "prop_ids": []}
+    },
+    {
+      "shot_id": "s002",
+      "source": {"clip": "clips/s002.mp4", "start": 3.5, "end": 8.1, "keyframes": ["frames/s002_0.jpg", "frames/s002_1.jpg", "frames/s002_2.jpg"]},
+      "narrative": {
+        "description": "In the kitchen, A stops and turns to look out the window.",
+        "characters": [{"character_id": "char_a", "action": "turns to look out the window", "expression": "hesitant"}],
+        "dialogue": [{"character_id": "char_a", "text": "I'm not sure whether I should go.", "start": 4.4, "end": 6.6}],
+        "beats": []
+      },
+      "visual": {"shot_size": "medium_close_up", "camera_motion": "slow_push_in", "composition": "A on the left third, window on the right", "lighting": "warm natural light from the window"},
+      "assets": {"scene_id": "scene_kitchen", "character_ids": ["char_a"], "prop_ids": []}
+    },
+    {
+      "shot_id": "s003",
+      "source": {"clip": "clips/s003.mp4", "start": 8.1, "end": 12.0, "keyframes": ["frames/s003_0.jpg", "frames/s003_1.jpg", "frames/s003_2.jpg"]},
+      "narrative": {
+        "description": "A grabs a coat and walks out of the apartment.",
+        "characters": [{"character_id": "char_a", "action": "grabs coat, opens the door and leaves", "expression": "determined"}],
+        "dialogue": [],
+        "beats": []
+      },
+      "visual": {"shot_size": "medium", "camera_motion": "pan_right", "composition": "follows A from left to right", "lighting": "cool overhead hallway light"},
+      "assets": {"scene_id": "scene_hallway", "character_ids": ["char_a"], "prop_ids": []}
+    }
+  ]
+}

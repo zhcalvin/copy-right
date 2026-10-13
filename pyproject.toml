@@ -1,0 +1,33 @@
+[project]
+name = "copy-right"
+version = "0.1.0"
+description = "Turn an existing video into an editable storyboard, change characters, scenes or plot, and regenerate only the affected shots."
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.11"
+dependencies = [
+    "cryptography>=50.0.2",
+    "fastapi>=0.143.0",
+    "httpx>=0.28.1",
+    "keyring>=25.7.0",
+    "python-multipart>=0.0.32",
+    "pyyaml>=6.0.3",
+    "sqlmodel>=0.0.48",
+    "uvicorn[standard]>=0.54.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
+    "pytest-cov>=7.1.0",
+    "ruff>=0.17.0",
+]

@@ -1,0 +1,33 @@
+# Runtime data (videos, database, credentials)
+data/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Frontend
+web/node_modules/
+web/dist/
+*.tsbuildinfo
+
+# Build output
+dist/
+
+# Env and secrets
+.env
+.env.*
+!.env.example
+
+# Local test footage (third-party video, never published)
+/videoplayback.mp4
+/*.mp4
+
+# OS / editors
+.DS_Store
+.idea/
+.vscode/
