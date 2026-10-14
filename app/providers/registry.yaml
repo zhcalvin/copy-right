@@ -45,13 +45,26 @@ providers:
       # Beijing workspaces may use https://{WorkspaceId}.cn-beijing.maas.aliyuncs.com/compatible-mode/v1
       - {name: base_url, label: Base URL, secret: false, required: false, env: DASHSCOPE_BASE_URL, default: "https://dashscope.aliyuncs.com/compatible-mode/v1"}
     # Video-capable models listed by GET /models and the vision docs on 2026-10-14.
-    # The first entry is the default. Only video_understanding is implemented so far.
+    # The first entry is the default. Implemented: video_understanding, image_edit,
+    # video_edit_v2v (character swap), image_to_video.
     models:
       video_understanding:
         - {id: qwen3.6-plus, name: Qwen3.6 Plus}
         - {id: qwen3.7-plus, name: Qwen3.7 Plus}
         - {id: qwen3.6-flash, name: Qwen3.6 Flash (cheaper)}
         - {id: qwen3-vl-plus, name: Qwen3-VL Plus}
+      # https://help.aliyun.com/zh/model-studio/qwen-image-edit-api (2026-10-14)
+      image_edit:
+        - {id: qwen-image-2.0-pro, name: Qwen-Image 2.0 Pro}
+        - {id: qwen-image-2.0, name: Qwen-Image 2.0 (faster)}
+      # https://help.aliyun.com/zh/model-studio/wan-animate-mix-api (2026-10-14):
+      # replaces the character in a 2–30 s clip, keeping its motion and camera.
+      video_edit_v2v:
+        - {id: wan2.2-animate-mix, name: Wan 2.2 Animate (character swap)}
+      # https://help.aliyun.com/zh/model-studio/image-to-video-api-reference/ (2026-10-14)
+      image_to_video:
+        - {id: wan2.6-i2v, name: Wan 2.6 image to video}
+        - {id: wan2.6-i2v-flash, name: Wan 2.6 image to video (flash)}
     connection_test:
       url: "{base_url}/models"
       headers: {Authorization: "Bearer {api_key}"}

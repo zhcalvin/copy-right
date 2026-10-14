@@ -59,3 +59,22 @@ def test_spans_from_cuts_ignores_out_of_range_cuts():
     assert [(s.start, s.end) for s in spans] == [(0.0, 1.0), (1.0, 2.0)]
     assert spans[0].duration == 1.0
     assert len(spans_from_cuts([], 2.0)) == 1
+
+
+def test_normalize_and_concat(sample_video, tmp_path):
+    from app.tools.media import concat_clips, normalize_clip
+
+    first = cut_clip(sample_video, 0, 1.0, tmp_path / "a.mp4")
+    second = cut_clip(sample_video, 1.0, 2.0, tmp_path / "b.mp4")
+    # A short clip is held on its last frame; a different size is letterboxed.
+    a = normalize_clip(first, tmp_path / "a_n.mp4", width=320, height=180, fps=25, duration=1.5)
+    b = normalize_clip(second, tmp_path / "b_n.mp4", width=320, height=180, fps=25, duration=0.5)
+    info = probe(a)
+    assert (info.width, info.height, info.fps) == (320, 180, 25.0)
+    assert info.duration == pytest.approx(1.5, abs=0.05)
+
+    joined = concat_clips([a, b], tmp_path / "joined.mp4")
+    assert probe(joined).duration == pytest.approx(2.0, abs=0.1)
+    assert not (tmp_path / "joined.txt").exists()
+    with pytest.raises(MediaError):
+        concat_clips([], tmp_path / "none.mp4")

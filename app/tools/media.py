@@ -1,4 +1,4 @@
-"""FFmpeg wrapper: probing, clip slicing and frame extraction.
+"""FFmpeg wrapper: probing, slicing, frame extraction and stitching.
 
 Every function shells out to ``ffmpeg`` / ``ffprobe`` with an argument list (never a
 shell string) and raises :class:`MediaError` with ffmpeg's last stderr line on failure.
@@ -170,3 +170,103 @@ def sample_times(start: float, end: float, count: int) -> list[float]:
         return [round(start + span / 2, 3)]
     step = inner / (count - 1)
     return [round(start + margin + i * step, 3) for i in range(count)]
+
+
+def normalize_clip(
+    source: Path, out: Path, *, width: int, height: int, fps: float, duration: float
+) -> Path:
+    """Re-encode a clip to exactly ``width``×``height`` at ``fps`` and ``duration`` seconds,
+    without audio. Letterboxes on aspect mismatch; holds the last frame if it is short."""
+    out.parent.mkdir(parents=True, exist_ok=True)
+    video_filter = ",".join(
+        [
+            f"scale={width}:{height}:force_original_aspect_ratio=decrease",
+            f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2",
+            "setsar=1",
+            f"fps={fps}",
+            f"tpad=stop_mode=clone:stop_duration={duration:.3f}",
+        ]
+    )
+    _run(
+        [
+            "ffmpeg",
+            "-v",
+            "error",
+            "-y",
+            "-i",
+            str(source),
+            "-vf",
+            video_filter,
+            "-t",
+            f"{duration:.3f}",
+            "-an",
+            "-c:v",
+            "libx264",
+            "-preset",
+            "veryfast",
+            "-crf",
+            "18",
+            "-pix_fmt",
+            "yuv420p",
+            str(out),
+        ]
+    )
+    return out
+
+
+def concat_clips(
+    clips: list[Path],
+    out: Path,
+    *,
+    audio_source: Path | None = None,
+    audio_start: float = 0.0,
+) -> Path:
+    """Join clips that share size and frame rate (see :func:`normalize_clip`). The audio
+    track is taken from ``audio_source`` starting at ``audio_start`` — e.g. the original
+    soundtrack, so background sound survives regenerated shots."""
+    if not clips:
+        raise MediaError("Nothing to join")
+    out.parent.mkdir(parents=True, exist_ok=True)
+    listing = out.with_suffix(".txt")
+    listing.write_text("".join(f"file '{c.resolve()}'\n" for c in clips), encoding="utf-8")
+    audio = (
+        [
+            "-ss",
+            f"{audio_start:.3f}",
+            "-i",
+            str(audio_source),
+            "-map",
+            "0:v",
+            "-map",
+            "1:a?",
+            "-c:a",
+            "aac",
+            "-shortest",
+        ]
+        if audio_source
+        else []
+    )
+    try:
+        _run(
+            [
+                "ffmpeg",
+                "-v",
+                "error",
+                "-y",
+                "-f",
+                "concat",
+                "-safe",
+                "0",
+                "-i",
+                str(listing),
+                *audio,
+                "-c:v",
+                "copy",
+                "-movflags",
+                "+faststart",
+                str(out),
+            ]
+        )
+    finally:
+        listing.unlink(missing_ok=True)
+    return out
