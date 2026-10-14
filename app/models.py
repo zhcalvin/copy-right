@@ -52,6 +52,10 @@ class Project(SQLModel, table=True):
     height: int | None = None
     fps: float | None = None
     status: ProjectStatus = ProjectStatus.CREATED
+    # What a running pipeline step is doing, e.g. "detecting" or "describing".
+    stage: str | None = None
+    error_type: str | None = None
+    error: str | None = None
     created_at: datetime = Field(default_factory=utcnow)
 
 
@@ -68,6 +72,8 @@ class Job(SQLModel, table=True):
     id: str = Field(default_factory=new_id, primary_key=True)
     project_id: str | None = Field(default=None, foreign_key="project.id", index=True)
     shot_id: str | None = None
+    # Which pipeline step owns the job, so its result can be applied when it finishes.
+    purpose: str | None = Field(default=None, index=True)
     capability: str
     provider: str
     model: str | None = None

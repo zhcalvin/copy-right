@@ -15,9 +15,9 @@
   <a href="LICENSE">MIT License</a>
 </p>
 
-> **Status: early development (M1 setup wizard).** The app runs end to end with mock providers,
-> and the setup wizard can save and test real provider keys. Real generation adapters land in
-> later milestones. See [Roadmap](#roadmap).
+> **Status: early development (M2 parsing).** Upload a video and get a storyboard: shots are
+> cut locally with PySceneDetect, then Alibaba Cloud Model Studio (Qwen) or Gemini describes each
+> shot. Editing and generation land in later milestones. See [Roadmap](#roadmap).
 
 <p align="center">
   <img src="docs/assets/screenshots/02-setup-capabilities.png" alt="Setup wizard: pick a provider and model per capability" width="800" />
@@ -115,7 +115,7 @@ docs/PLAN.md         Full design and milestone plan
 
 - [x] **M0** Skeleton: backend, frontend, SQLite, job worker, capability interfaces, mock adapters, provider registry
 - [x] **M1** Setup wizard, encrypted credentials, connection tests, settings page, English / 简体中文 UI
-- [ ] **M2** Parsing: shot detection, clips, keyframes, storyboard generation (Bailian + Gemini)
+- [x] **M2** Parsing: shot detection, clips, keyframes, storyboard generation (Bailian + Gemini)
 - [ ] **M3** Storyboard editor, asset panel, natural-language plot edits, version history
 - [ ] **M4** Generation and stitching
 - [ ] **M5** Dubbing and lip-sync

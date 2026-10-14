@@ -4,8 +4,75 @@ export interface Project {
   id: string;
   name: string;
   status: ProjectStatus;
+  /** What a running step is doing: "detecting" or "describing". */
+  stage: string | null;
+  error_type: string | null;
+  error: string | null;
   duration: number | null;
+  width: number | null;
+  height: number | null;
+  fps: number | null;
+  has_video: boolean;
+  /** Path under the project's files endpoint, e.g. "source/original.mp4". */
+  source_file: string | null;
   created_at: string;
+}
+
+export type ParseLanguage = "en" | "zh-CN";
+
+export interface ParseOptions {
+  threshold?: number;
+  language?: ParseLanguage;
+}
+
+// Storyboard (mirrors app/storyboard/schema.py)
+
+export type Treatment = "keep" | "trim" | "swap" | "edit" | "motion" | "regenerate" | "new" | "removed";
+
+export interface ShotSource {
+  clip: string | null;
+  start: number;
+  end: number;
+  keyframes: string[];
+}
+
+export interface Shot {
+  shot_id: string;
+  source: ShotSource | null;
+  narrative: {
+    description: string;
+    characters: { character_id: string; action: string | null; expression: string | null }[];
+    dialogue: { character_id: string | null; text: string; start: number | null; end: number | null }[];
+  };
+  visual: {
+    shot_size: string | null;
+    camera_motion: string | null;
+    composition: string | null;
+    lighting: string | null;
+  };
+  assets: { scene_id: string | null; character_ids: string[]; prop_ids: string[] };
+  edit: { treatment: Treatment; treatment_reason: string | null };
+}
+
+export interface Character {
+  character_id: string;
+  name: string;
+  description: string;
+  reference_images: string[];
+}
+
+export interface Scene {
+  scene_id: string;
+  description: string;
+  reference_images: string[];
+}
+
+export interface Storyboard {
+  project_id: string;
+  version: number;
+  characters: Character[];
+  scenes: Scene[];
+  shots: Shot[];
 }
 
 export interface Health {

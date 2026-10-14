@@ -114,3 +114,24 @@ def set_storage(session: Session, storage_id: str) -> str:
     session.add(row)
     session.commit()
     return storage_id
+
+
+class CapabilityUnavailable(LookupError):
+    pass
+
+
+def selection_for(
+    session: Session, capability: Capability, registry: Registry | None = None
+) -> CapabilitySelection:
+    """The saved provider and model for a capability, with the registry's first model as
+    the default. Raises :class:`CapabilityUnavailable` when nothing usable is chosen."""
+    reg = registry or get_registry()
+    row = session.get(CapabilitySetting, capability)
+    if row is None or not row.enabled or row.provider is None:
+        raise CapabilityUnavailable(f"No provider is selected for {capability}")
+    provider = reg.providers.get(row.provider)
+    if provider is None:
+        raise CapabilityUnavailable(f"{capability}: unknown provider {row.provider}")
+    options = provider.models.get(capability, [])
+    model = row.model or (options[0].id if options else None)
+    return CapabilitySelection(capability=capability, provider=row.provider, model=model)

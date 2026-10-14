@@ -4,10 +4,12 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from sqlmodel import Session
 
 from app.api.router import api_router
 from app.core.config import get_settings
 from app.core.db import get_engine, init_db
+from app.pipeline import parse
 from app.pipeline.worker import Worker
 
 
@@ -15,7 +17,12 @@ from app.pipeline.worker import Worker
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings = get_settings()
     init_db()
-    worker = Worker(get_engine(), poll_interval=settings.worker_poll_interval)
+    engine = get_engine()
+    with Session(engine) as session:
+        parse.recover_interrupted(session)
+    worker = Worker(
+        engine, poll_interval=settings.worker_poll_interval, hooks=[parse.on_job_finished]
+    )
     if settings.worker_enabled:
         worker.start()
     app.state.worker = worker

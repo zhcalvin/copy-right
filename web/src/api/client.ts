@@ -4,11 +4,13 @@ import type {
   ConnectionResult,
   CredentialView,
   Health,
+  ParseOptions,
   PresetSpec,
   Project,
   ProviderSpec,
   SettingsRead,
   StorageSpec,
+  Storyboard,
 } from "./types";
 
 export class ApiError extends Error {
@@ -24,17 +26,16 @@ function errorDetail(body: unknown, fallback: string): string {
   const detail = (body as { detail?: unknown } | null)?.detail;
   if (typeof detail === "string") return detail;
   // FastAPI validation errors: [{ msg, loc }, ...]
-  if (Array.isArray(detail)) return detail.map((d) => d?.msg ?? "").filter(Boolean).join("；") || fallback;
+  if (Array.isArray(detail)) return detail.map((d) => d?.msg ?? "").filter(Boolean).join("; ") || fallback;
   return fallback;
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let response: Response;
+  // FormData sets its own multipart Content-Type (with the boundary).
+  const headers: HeadersInit = init?.body instanceof FormData ? {} : { "Content-Type": "application/json" };
   try {
-    response = await fetch(`/api${path}`, {
-      headers: { "Content-Type": "application/json" },
-      ...init,
-    });
+    response = await fetch(`/api${path}`, { headers, ...init });
   } catch {
     throw new ApiError(0, "Cannot reach the backend");
   }
@@ -48,9 +49,26 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 const json = (method: string, body: unknown): RequestInit => ({ method, body: JSON.stringify(body) });
 
+const project = (id: string) => `/projects/${encodeURIComponent(id)}`;
+
+/** URL of a file inside a project's data folder (clips, frames, source video). */
+export function projectFileUrl(projectId: string, path: string): string {
+  return `/api${project(projectId)}/files/${path.split("/").map(encodeURIComponent).join("/")}`;
+}
+
 export const api = {
   health: () => request<Health>("/health"),
   listProjects: () => request<Project[]>("/projects"),
+  createProject: (name: string) => request<Project>("/projects", json("POST", { name })),
+  getProject: (id: string) => request<Project>(project(id)),
+  uploadVideo: (id: string, file: File, rightsConfirmed: boolean) => {
+    const form = new FormData();
+    form.append("file", file);
+    form.append("rights_confirmed", String(rightsConfirmed));
+    return request<Project>(`${project(id)}/video`, { method: "POST", body: form });
+  },
+  parseProject: (id: string, options: ParseOptions) => request<Project>(`${project(id)}/parse`, json("POST", options)),
+  storyboard: (id: string) => request<Storyboard>(`${project(id)}/storyboard`),
 
   setupStatus: () => request<{ configured: boolean }>("/setup/status"),
   capabilities: () => request<CapabilityInfo[]>("/capabilities"),

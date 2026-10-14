@@ -95,3 +95,48 @@ async def test_content_rejected_is_recorded_distinctly(engine, monkeypatch):
     failed = _job(engine, job.id)
     assert failed.status == JobStatus.FAILED
     assert failed.error_type == "content_rejected"
+
+
+async def test_hooks_run_when_a_job_finishes(engine):
+    finished: list[tuple[str, JobStatus]] = []
+
+    def hook(session, job):
+        finished.append((job.id, job.status))
+
+    def broken(session, job):
+        raise RuntimeError("hook bug")
+
+    with Session(engine) as session:
+        ok = enqueue_job(session, capability=Capability.TTS, provider="mock", request={}).id
+        bad = enqueue_job(session, capability=Capability.TTS, provider="nope", request={}).id
+    worker = Worker(engine, hooks=[broken, hook])
+    await worker.run_once()
+    await worker.run_once()
+    assert (bad, JobStatus.FAILED) in finished
+    assert (ok, JobStatus.SUCCEEDED) in finished
+
+
+async def test_new_credentials_build_a_new_adapter(engine, monkeypatch):
+    from app.providers.credentials import save_credentials
+
+    built: list[dict] = []
+    import app.pipeline.worker as worker_module
+
+    real = worker_module.build_adapter
+
+    def spy(provider_id, **kwargs):
+        built.append(kwargs["credentials"])
+        return real("mock", model=kwargs.get("model"))
+
+    monkeypatch.setattr(worker_module, "build_adapter", spy)
+    worker = Worker(engine)
+    with Session(engine) as session:
+        save_credentials(session, "elevenlabs", {"api_key": "first-key-1111"})
+        enqueue_job(session, capability=Capability.TTS, provider="elevenlabs", request={})
+        enqueue_job(session, capability=Capability.TTS, provider="elevenlabs", request={})
+    await worker.run_once()
+    with Session(engine) as session:
+        save_credentials(session, "elevenlabs", {"api_key": "second-key-2222"})
+        enqueue_job(session, capability=Capability.TTS, provider="elevenlabs", request={})
+    await worker.run_once()
+    assert [c["api_key"] for c in built] == ["first-key-1111", "second-key-2222"]

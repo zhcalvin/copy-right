@@ -1,4 +1,5 @@
 import type { Project } from "../api/types";
+import { NewProjectForm } from "../components/NewProjectForm";
 import { ProjectList } from "../components/ProjectList";
 import { useI18n } from "../i18n";
 import { ERROR_BOX } from "../lib/ui";
@@ -12,7 +13,10 @@ export function HomePage({ state }: { state: ProjectsState }) {
   const { t } = useI18n();
   return (
     <>
-      <h1 className="text-2xl font-semibold">{t("home.title")}</h1>
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <h1 className="text-2xl font-semibold">{t("home.title")}</h1>
+        {state.kind === "ready" && <NewProjectForm />}
+      </div>
       {state.kind === "loading" && <p className="text-sm text-stone-500">{t("app.loading")}</p>}
       {state.kind === "error" && (
         <div className={ERROR_BOX}>

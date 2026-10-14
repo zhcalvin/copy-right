@@ -17,8 +17,10 @@ def enqueue_job(
     model: str | None = None,
     project_id: str | None = None,
     shot_id: str | None = None,
+    purpose: str | None = None,
 ) -> Job:
     job = Job(
+        purpose=purpose,
         capability=capability,
         provider=provider,
         model=model,

@@ -62,7 +62,10 @@ def test_view_masks_secrets_and_reports_sources(session):
 def test_env_takes_priority_over_stored(session):
     save_credentials(session, "gemini", {"api_key": SECRET})
     env = {"GEMINI_API_KEY": "env-key-0000"}
-    assert credentials_for(session, "gemini", env=env) == {"api_key": "env-key-0000"}
+    assert credentials_for(session, "gemini", env=env) == {
+        "api_key": "env-key-0000",
+        "base_url": "https://generativelanguage.googleapis.com/v1beta",
+    }
     view = describe_credentials(session, "gemini", env=env)
     assert view.fields[0].source == "env"
     assert view.fields[0].display == "****0000"

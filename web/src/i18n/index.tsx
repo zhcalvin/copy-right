@@ -73,3 +73,13 @@ interface Localizable {
 export function localized(entity: Localizable, field: "name" | "description", lang: Lang): string {
   return entity.i18n?.[lang]?.[field] ?? entity[field];
 }
+
+export function isMessageKey(key: string): key is MessageKey {
+  return key in en;
+}
+
+/** Translate a dynamic key such as `size.close_up`, falling back to readable raw text. */
+export function labelFor(t: Translate, prefix: string, value: string): string {
+  const key = `${prefix}.${value}`;
+  return isMessageKey(key) ? t(key) : value.replaceAll("_", " ");
+}

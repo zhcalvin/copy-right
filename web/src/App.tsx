@@ -4,15 +4,17 @@ import { api } from "./api/client";
 import type { Health } from "./api/types";
 import { Header } from "./components/Header";
 import { HomePage, type ProjectsState } from "./pages/HomePage";
+import { ProjectPage } from "./pages/ProjectPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { SetupPage } from "./pages/SetupPage";
-import { navigate, usePathname } from "./router";
+import { navigate, projectIdFrom, usePathname } from "./router";
 
 export default function App() {
   const pathname = usePathname();
   const [health, setHealth] = useState<Health | null>(null);
   const [projects, setProjects] = useState<ProjectsState>({ kind: "loading" });
   const [configured, setConfigured] = useState<boolean | null>(null);
+  const projectId = projectIdFrom(pathname);
 
   useEffect(() => {
     let cancelled = false;
@@ -53,7 +55,8 @@ export default function App() {
       <main className="flex flex-col gap-6 mx-auto px-6 py-10 w-full max-w-6xl">
         {pathname === "/setup" && <SetupPage onConfigured={() => setConfigured(true)} />}
         {pathname === "/settings" && <SettingsPage />}
-        {pathname !== "/setup" && pathname !== "/settings" && <HomePage state={projects} />}
+        {projectId && configured && <ProjectPage projectId={projectId} />}
+        {pathname !== "/setup" && pathname !== "/settings" && !projectId && <HomePage state={projects} />}
       </main>
     </div>
   );

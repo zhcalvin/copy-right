@@ -51,6 +51,10 @@ All AI work goes through third-party APIs behind pluggable adapters. There are t
 - Credentials (env → encrypted store → default; masked views): `app/providers/credentials.py`, master key in `app/core/crypto.py`
 - Free connection checks declared per provider in `registry.yaml` (`connection_test`), run by `app/providers/connection.py`
 - Setup wizard and settings UI: `web/src/pages/`, `web/src/setup/`
+- Parsing (detect → slice → describe → storyboard v-next): `app/pipeline/parse.py`; shot detection in `app/tools/scene_detect.py`, FFmpeg in `app/tools/media.py`
+- `video_understanding` contract (request, lenient result parsing, prompt, chunking): `app/capabilities/video_understanding.py`
+- Real adapters: `app/providers/dashscope/`, `app/providers/gemini/` (shared HTTP helpers and error mapping in `app/providers/http.py`)
+- Project page (upload, parse progress, storyboard board): `web/src/pages/ProjectPage.tsx`, `web/src/project/`
 - Storyboard schema and treatment rules: `app/storyboard/schema.py`, `app/storyboard/treatment.py`
 - Job worker (persists external task IDs, resumes after restart): `app/pipeline/worker.py`
 - Logo: `docs/assets/logo.png` (full size), `web/public/logo.png` (256px)

@@ -35,7 +35,7 @@ providers:
   dashscope:
     name: Alibaba Cloud Model Studio (DashScope)
     region: cn
-    adapter: null
+    adapter: app.providers.dashscope.adapter:DashScopeAdapter
     description: Qwen-VL, Qwen, Wan and Paraformer. One key covers several capabilities.
     i18n: {zh-CN: {name: 阿里云百炼, description: 通义千问 VL / 通义千问 / 通义万相 / Paraformer，一个 key 覆盖多个能力。}}
     docs: https://help.aliyun.com/zh/model-studio/
@@ -44,7 +44,14 @@ providers:
       - {name: api_key, label: API Key, env: DASHSCOPE_API_KEY}
       # Beijing workspaces may use https://{WorkspaceId}.cn-beijing.maas.aliyuncs.com/compatible-mode/v1
       - {name: base_url, label: Base URL, secret: false, required: false, env: DASHSCOPE_BASE_URL, default: "https://dashscope.aliyuncs.com/compatible-mode/v1"}
-    models: {}
+    # Video-capable models listed by GET /models and the vision docs on 2026-10-14.
+    # The first entry is the default. Only video_understanding is implemented so far.
+    models:
+      video_understanding:
+        - {id: qwen3.6-plus, name: Qwen3.6 Plus}
+        - {id: qwen3.7-plus, name: Qwen3.7 Plus}
+        - {id: qwen3.6-flash, name: Qwen3.6 Flash (cheaper)}
+        - {id: qwen3-vl-plus, name: Qwen3-VL Plus}
     connection_test:
       url: "{base_url}/models"
       headers: {Authorization: "Bearer {api_key}"}
@@ -99,16 +106,21 @@ providers:
   gemini:
     name: Google Gemini
     region: global
-    adapter: null
+    adapter: app.providers.gemini.adapter:GeminiAdapter
     description: Native video input with structured JSON output; image models; Veo video generation.
     i18n: {zh-CN: {name: Google Gemini, description: 原生视频输入与结构化 JSON 输出；图像模型；Veo 视频生成。}}
     docs: https://ai.google.dev/gemini-api/docs
     capabilities: [video_understanding, llm_text, image_edit, image_to_video, asr]
     credentials:
       - {name: api_key, label: API Key, env: GEMINI_API_KEY}
-    models: {}
+      - {name: base_url, label: Base URL, secret: false, required: false, env: GEMINI_BASE_URL, default: "https://generativelanguage.googleapis.com/v1beta"}
+    # From https://ai.google.dev/gemini-api/docs/models on 2026-10-14. Not live-tested yet.
+    models:
+      video_understanding:
+        - {id: gemini-3.8-flash, name: Gemini 3.8 Flash}
+        - {id: gemini-3.5-flash-lite, name: Gemini 3.5 Flash-Lite (cheaper)}
     connection_test:
-      url: https://generativelanguage.googleapis.com/v1beta/models
+      url: "{base_url}/models"
       headers: {x-goog-api-key: "{api_key}"}
       status: {400: auth_error}  # an invalid key comes back as 400 API_KEY_INVALID
 

@@ -35,9 +35,15 @@ def test_preset_regions_match():
             assert registry.providers[provider_id].region == region
 
 
-def test_mock_is_the_only_implemented_provider_for_now():
+def test_implemented_providers():
     implemented = {p.id for p in load_registry().providers.values() if p.implemented}
-    assert implemented == {"mock"}
+    assert implemented == {"mock", "dashscope", "gemini"}
+
+
+def test_every_implemented_adapter_imports():
+    for spec in load_registry().providers.values():
+        if spec.implemented:
+            assert build_adapter(spec.id).provider_id == spec.id
 
 
 def test_build_mock_adapter():
@@ -48,7 +54,7 @@ def test_build_mock_adapter():
 
 def test_build_unimplemented_provider_raises():
     with pytest.raises(ProviderNotImplemented):
-        build_adapter("dashscope")
+        build_adapter("kling")
 
 
 def test_build_unknown_provider_raises():

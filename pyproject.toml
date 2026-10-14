@@ -10,8 +10,10 @@ dependencies = [
     "fastapi>=0.143.0",
     "httpx>=0.28.1",
     "keyring>=25.7.0",
+    "opencv-python-headless>=5.0.0.93",
     "python-multipart>=0.0.32",
     "pyyaml>=6.0.3",
+    "scenedetect>=0.7.2",
     "sqlmodel>=0.0.48",
     "uvicorn[standard]>=0.54.0",
 ]

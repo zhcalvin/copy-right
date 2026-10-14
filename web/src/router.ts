@@ -22,3 +22,9 @@ export function navigate(path: string, { replace = false } = {}): void {
   else window.history.pushState(null, "", path);
   window.dispatchEvent(new Event(NAVIGATE_EVENT));
 }
+
+/** The project id in `/projects/<id>`, or null for any other path. */
+export function projectIdFrom(pathname: string): string | null {
+  const match = /^\/projects\/([^/]+)\/?$/.exec(pathname);
+  return match ? decodeURIComponent(match[1]) : null;
+}

@@ -1,7 +1,7 @@
 """Verify a provider's credentials without triggering billable work.
 
-Implemented adapters use their own ``test_connection()``. Until a provider has one, the
-registry's declarative ``connection_test`` request is used instead.
+A provider's declarative ``connection_test`` in the registry is preferred, because it is a
+known-free request. Providers without one fall back to the adapter's ``test_connection()``.
 """
 
 import time
@@ -109,10 +109,10 @@ async def check_provider(
 ) -> ConnectionResult:
     secrets = [credentials[f.name] for f in spec.credentials if f.secret and f.name in credentials]
     try:
-        if spec.implemented:
-            await build_adapter(spec.id, credentials=dict(credentials)).test_connection()
-        elif spec.connection_test is not None:
+        if spec.connection_test is not None:
             await run_http_check(spec.id, spec.connection_test, credentials, client)
+        elif spec.implemented:
+            await build_adapter(spec.id, credentials=dict(credentials)).test_connection()
         else:
             return ConnectionResult(
                 provider=spec.id,

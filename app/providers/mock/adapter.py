@@ -30,11 +30,13 @@ class MockAdapter(Adapter):
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
         self._poll_counts: dict[str, int] = {}
+        self._requests: dict[str, dict[str, Any]] = {}
 
     async def submit(self, capability: Capability, request: dict[str, Any]) -> JobHandle:
         if not self.supports(capability):
             raise InputInvalid(f"mock does not support {capability}", provider=self.provider_id)
         external_id = f"mock-{capability}-{next(self._ids)}"
+        self._requests = {**self._requests, external_id: request}
         return JobHandle(
             provider=self.provider_id,
             capability=capability,
@@ -53,6 +55,9 @@ class MockAdapter(Adapter):
         meta = {"mock": True, "external_id": handle.external_id}
         match handle.capability:
             case Capability.VIDEO_UNDERSTANDING:
+                request = self._requests.get(handle.external_id, {})
+                if request.get("shots"):  # a real parse: describe the shots it was given
+                    return Artifact(kind="json", data=_describe(request["shots"]), meta=meta)
                 return Artifact(kind="json", data=load_sample_storyboard(), meta=meta)
             case Capability.LLM_TEXT:
                 return Artifact(
@@ -91,3 +96,22 @@ class MockAdapter(Adapter):
 
     async def test_connection(self) -> None:
         return None
+
+
+def _describe(shots: list[dict[str, Any]]) -> dict[str, Any]:
+    """A placeholder storyboard with one character and one scene throughout."""
+    return {
+        "characters": [{"character_id": "char_1", "name": "Person", "description": "Mock"}],
+        "scenes": [{"scene_id": "scene_1", "description": "Mock location"}],
+        "shots": [
+            {
+                "shot_id": shot["shot_id"],
+                "description": f"Mock description of shot {shot['shot_id']}",
+                "characters": [{"character_id": "char_1", "action": "stands", "expression": None}],
+                "dialogue": [],
+                "visual": {"shot_size": "medium", "camera_motion": "static"},
+                "scene_id": "scene_1",
+            }
+            for shot in shots
+        ],
+    }
