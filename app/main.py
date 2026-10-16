@@ -9,7 +9,7 @@ from sqlmodel import Session
 from app.api.router import api_router
 from app.core.config import get_settings
 from app.core.db import get_engine, init_db
-from app.pipeline import assets, parse
+from app.pipeline import assets, parse, render
 from app.pipeline.worker import Worker
 
 
@@ -23,10 +23,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     worker = Worker(
         engine,
         poll_interval=settings.worker_poll_interval,
-        hooks=[parse.on_job_finished, assets.on_job_finished],
+        hooks=[parse.on_job_finished, assets.on_job_finished, render.on_job_finished],
     )
+    render.bind_engine(engine)
     if settings.worker_enabled:
         worker.start()
+        render.recover(engine)
     app.state.worker = worker
     try:
         yield

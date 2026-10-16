@@ -164,6 +164,40 @@ export interface Proposal {
   error: string | null;
 }
 
+export type RenderStatus = "running" | "waiting" | "stitching" | "done" | "failed" | "cancelled";
+export type ShotRenderStatus = "pending" | "running" | "frame_ready" | "done" | "skipped" | "failed";
+export type RenderQuality = "preview" | "final";
+
+export interface ShotRender {
+  treatment: Treatment;
+  status: ShotRenderStatus;
+  step: "frame" | "video" | "i2v" | null;
+  duration: number;
+  mode: string | null;
+  pieces: number;
+  first_frame: string | null;
+  clip: string | null;
+  provider: string | null;
+  model: string | null;
+  error_type: string | null;
+  error: string | null;
+}
+
+export interface Render {
+  id: string;
+  project_id: string;
+  storyboard_version: number;
+  status: RenderStatus;
+  quality: RenderQuality;
+  approve_frames: boolean;
+  shots: Record<string, ShotRender>;
+  output: string | null;
+  error_type: string | null;
+  error: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface Health {
   status: string;
   ffmpeg: boolean;

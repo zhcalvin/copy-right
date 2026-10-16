@@ -10,6 +10,8 @@ import type {
   PresetSpec,
   Project,
   Proposal,
+  Render,
+  RenderQuality,
   ProviderSpec,
   SavedStoryboard,
   SettingsRead,
@@ -105,6 +107,13 @@ export const api = {
   plotEdit: (id: string, jobId: string) => request<Proposal>(`${project(id)}/plot-edits/${encodeURIComponent(jobId)}`),
   applyPlotEdit: (id: string, jobId: string, keys: string[]) =>
     request<SavedStoryboard>(`${project(id)}/plot-edits/${encodeURIComponent(jobId)}/apply`, json("POST", { keys })),
+
+  renders: (id: string) => request<Render[]>(`${project(id)}/renders`),
+  render: (id: string, renderId: string) => request<Render>(`${project(id)}/renders/${encodeURIComponent(renderId)}`),
+  startRender: (id: string, quality: RenderQuality, approveFrames: boolean) =>
+    request<Render>(`${project(id)}/renders`, json("POST", { quality, approve_frames: approveFrames })),
+  renderAction: (id: string, renderId: string, action: string, body: unknown = {}) =>
+    request<Render>(`${project(id)}/renders/${encodeURIComponent(renderId)}/${action}`, json("POST", body)),
 
   setupStatus: () => request<{ configured: boolean }>("/setup/status"),
   capabilities: () => request<CapabilityInfo[]>("/capabilities"),

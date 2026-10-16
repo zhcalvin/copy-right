@@ -1,19 +1,21 @@
-import { useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 
 import type { Project, Storyboard } from "../api/types";
 import { useI18n } from "../i18n";
 import { BTN_LINK, ERROR_BOX } from "../lib/ui";
 import { ParsePanel } from "../project/ParsePanel";
 import { ParseProgress } from "../project/ParseProgress";
+import { RenderPanel } from "../project/RenderPanel";
 import { StoryboardBoard } from "../project/StoryboardBoard";
 import { UploadPanel } from "../project/UploadPanel";
 import { formatDuration } from "../project/format";
 import { useProject } from "../project/useProject";
+import { useRender } from "../project/useRender";
 import { navigate } from "../router";
 
 export function ProjectPage({ projectId }: { projectId: string }) {
   const { t } = useI18n();
-  const { state, storyboard, replace, replaceStoryboard } = useProject(projectId);
+  const { state, storyboard, replace, replaceStoryboard, reload } = useProject(projectId);
 
   return (
     <>
@@ -29,6 +31,7 @@ export function ProjectPage({ projectId }: { projectId: string }) {
           storyboard={storyboard}
           onProject={replace}
           onStoryboard={replaceStoryboard}
+          onReload={reload}
         />
       )}
     </>
@@ -40,10 +43,22 @@ interface ProjectBodyProps {
   storyboard: ReturnType<typeof useProject>["storyboard"];
   onProject: (project: Project) => void;
   onStoryboard: (storyboard: Storyboard) => void;
+  onReload: () => Promise<void>;
 }
 
-function ProjectBody({ project, storyboard, onProject, onStoryboard }: ProjectBodyProps) {
+function ProjectBody({ project, storyboard, onProject, onStoryboard, onReload }: ProjectBodyProps) {
   const { t } = useI18n();
+  const reloadProject = useCallback(() => void onReload(), [onReload]);
+  const renders = useRender(project.id, reloadProject);
+  const results = useMemo(() => {
+    const latest = renders.render;
+    if (!latest || latest.status !== "done") return undefined;
+    return Object.fromEntries(
+      Object.entries(latest.shots)
+        .filter(([, s]) => s.clip && s.treatment !== "keep" && s.status === "done")
+        .map(([id, s]) => [id, s.clip as string]),
+    );
+  }, [renders.render]);
   const [replacing, setReplacing] = useState(false);
   const hasStoryboard = storyboard.kind === "ready";
 
@@ -95,7 +110,23 @@ function ProjectBody({ project, storyboard, onProject, onStoryboard }: ProjectBo
         </div>
       )}
       {storyboard.kind === "ready" && (
-        <StoryboardBoard projectId={project.id} storyboard={storyboard.storyboard} onChange={onStoryboard} />
+        <RenderPanel
+          project={project}
+          storyboard={storyboard.storyboard}
+          render={renders.render}
+          onRender={(next) => {
+            renders.setRender(next);
+            reloadProject();
+          }}
+        />
+      )}
+      {storyboard.kind === "ready" && (
+        <StoryboardBoard
+          projectId={project.id}
+          storyboard={storyboard.storyboard}
+          onChange={onStoryboard}
+          results={results}
+        />
       )}
     </>
   );

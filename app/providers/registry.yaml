@@ -61,15 +61,16 @@ providers:
       image_edit:
         - {id: qwen-image-2.0-pro, name: Qwen-Image 2.0 Pro}
         - {id: qwen-image-2.0, name: Qwen-Image 2.0 (faster)}
-      # `modes` says which treatments a model serves (swap, edit, motion).
+      # `modes`: the VideoEditRequest modes a model accepts (swap, edit, motion). A swap
+      # treatment prefers an `edit` model: it handles several people and close-ups.
       # https://help.aliyun.com/zh/model-studio/wan-animate-mix-api (2026-10-14):
       # replaces the character in a 2–30 s clip, keeping its motion and camera.
       # https://www.alibabacloud.com/help/zh/model-studio/wan-video-editing-api-reference
       # (2026-10-16): instruction edits of a 2–10 s clip with up to 4 reference images.
       video_edit_v2v:
-        - {id: wan2.2-animate-mix, name: Wan 2.2 Animate (character swap), modes: [swap]}
-        - {id: wan2.7-videoedit, name: Wan 2.7 video edit (instructions, several people), modes: [edit]}
-        - {id: wan2.2-animate-move, name: Wan 2.2 Animate (move a new image), modes: [motion]}
+        - {id: wan2.7-videoedit, name: Wan 2.7 video edit (instructions, several people), modes: [edit], min_seconds: 2, max_seconds: 10}
+        - {id: wan2.2-animate-mix, name: Wan 2.2 Animate (one-person swap), modes: [swap], min_seconds: 2, max_seconds: 30}
+        - {id: wan2.2-animate-move, name: Wan 2.2 Animate (move a new image), modes: [motion], min_seconds: 2, max_seconds: 30}
       # https://help.aliyun.com/zh/model-studio/image-to-video-api-reference/ (2026-10-14)
       image_to_video:
         - {id: wan2.6-i2v, name: Wan 2.6 image to video}

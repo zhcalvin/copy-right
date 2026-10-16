@@ -90,6 +90,36 @@ class Job(SQLModel, table=True):
     updated_at: datetime = Field(default_factory=utcnow)
 
 
+class RenderStatus(StrEnum):
+    RUNNING = "running"
+    # Waiting on the user: first frames to approve, or failed shots to retry.
+    WAITING = "waiting"
+    STITCHING = "stitching"
+    DONE = "done"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+
+
+class Render(SQLModel, table=True):
+    """One generation run over a storyboard version (docs/PLAN.md §7 steps 5–7).
+
+    ``shots`` maps shot_id to that shot's progress (see app/pipeline/render.py).
+    """
+
+    id: str = Field(default_factory=new_id, primary_key=True)
+    project_id: str = Field(foreign_key="project.id", index=True)
+    storyboard_version: int
+    status: RenderStatus = RenderStatus.RUNNING
+    quality: str = "preview"
+    approve_frames: bool = True
+    shots: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON, nullable=False))
+    output: str | None = None  # project-relative path of the stitched video
+    error_type: str | None = None
+    error: str | None = None
+    created_at: datetime = Field(default_factory=utcnow)
+    updated_at: datetime = Field(default_factory=utcnow)
+
+
 class CapabilitySetting(SQLModel, table=True):
     capability: str = Field(primary_key=True)
     provider: str | None = None

@@ -9,3 +9,6 @@ export const INPUT =
   "px-3 py-2 w-full text-sm bg-white border border-stone-200 rounded-lg focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100";
 export const ERROR_BOX = "p-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg";
 export const TAG = "shrink-0 px-2 py-0.5 text-xs rounded-full";
+// INPUT without w-full, for a select or field that sizes to its content.
+export const INPUT_INLINE =
+  "px-2 py-2 text-sm bg-white border border-stone-200 rounded-lg focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100";

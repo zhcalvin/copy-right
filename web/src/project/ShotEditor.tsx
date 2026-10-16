@@ -4,7 +4,7 @@ import { type ReactNode, useState } from "react";
 import { api, projectFileUrl } from "../api/client";
 import type { Shot, Storyboard, Treatment } from "../api/types";
 import { labelFor, useI18n } from "../i18n";
-import { BTN_PRIMARY, BTN_SECONDARY, ERROR_BOX, INPUT } from "../lib/ui";
+import { BTN_PRIMARY, BTN_SECONDARY, ERROR_BOX, INPUT, INPUT_INLINE } from "../lib/ui";
 import { CAMERA_MOTIONS, SHOT_SIZES, TREATMENTS, replaceShot, toggleCharacter } from "./edits";
 import { formatTimecode } from "./format";
 import { Modal } from "./Modal";
@@ -18,9 +18,6 @@ interface ShotEditorProps {
 }
 
 const AUTO = "auto";
-// INPUT without w-full, for a fixed-width select next to a growing input.
-const SELECT_SM =
-  "px-2 py-2 text-sm bg-white border border-stone-200 rounded-lg focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100";
 
 /** The fixed options, plus the current value if the model used another one. */
 function withCurrent(options: readonly string[], current: string | null): string[] {
@@ -225,7 +222,7 @@ export function ShotEditor({ projectId, storyboard, shot: initial, onClose, onSa
             {shot.narrative.dialogue.map((line, index) => (
               <div key={index} className="flex gap-2">
                 <select
-                  className={clsx(SELECT_SM, "shrink-0 w-36")}
+                  className={clsx(INPUT_INLINE, "shrink-0 w-36")}
                   aria-label={t("editor.speaker")}
                   value={line.character_id ?? ""}
                   onChange={(event) =>

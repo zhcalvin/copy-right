@@ -270,3 +270,149 @@ def concat_clips(
     finally:
         listing.unlink(missing_ok=True)
     return out
+
+
+def pad_clip(source: Path, out: Path, *, min_duration: float) -> Path:
+    """Hold the last frame so the clip lasts at least ``min_duration`` seconds (providers
+    reject very short inputs; the padding is cut off again when stitching)."""
+    out.parent.mkdir(parents=True, exist_ok=True)
+    _run(
+        [
+            "ffmpeg",
+            "-v",
+            "error",
+            "-y",
+            "-i",
+            str(source),
+            "-vf",
+            f"tpad=stop_mode=clone:stop_duration={min_duration:.3f}",
+            "-t",
+            f"{min_duration:.3f}",
+            "-an",
+            "-c:v",
+            "libx264",
+            "-preset",
+            "veryfast",
+            "-crf",
+            "18",
+            "-pix_fmt",
+            "yuv420p",
+            str(out),
+        ]
+    )
+    return out
+
+
+def split_points(duration: float, max_piece: float) -> list[tuple[float, float]]:
+    """Equal pieces no longer than ``max_piece`` covering ``[0, duration)``."""
+    if duration <= max_piece:
+        return [(0.0, duration)]
+    count = -(-duration // max_piece)  # ceil
+    step = duration / count
+    return [
+        (round(i * step, 3), round(min(duration, (i + 1) * step), 3)) for i in range(int(count))
+    ]
+
+
+def _drawtext(text: str) -> str:
+    for char in ("\\", ":", "'", "%", ","):
+        text = text.replace(char, "\\" + char)
+    return (
+        f"drawtext=text='{text}':x=w-tw-12:y=h-th-12:fontcolor=white:fontsize=h/24"
+        ":box=1:boxcolor=black@0.5:boxborderw=6"
+    )
+
+
+def label_clip(source: Path, out: Path, text: str) -> Path:
+    """Burn a small visible label into the bottom-right corner."""
+    out.parent.mkdir(parents=True, exist_ok=True)
+    _run(
+        [
+            "ffmpeg",
+            "-v",
+            "error",
+            "-y",
+            "-i",
+            str(source),
+            "-vf",
+            _drawtext(text),
+            "-an",
+            "-c:v",
+            "libx264",
+            "-preset",
+            "veryfast",
+            "-crf",
+            "18",
+            "-pix_fmt",
+            "yuv420p",
+            str(out),
+        ]
+    )
+    return out
+
+
+@dataclass(frozen=True)
+class Segment:
+    """One stretch of the output: a normalized clip, and where its sound comes from.
+    ``audio_start`` is a time in the source video; ``None`` means silence."""
+
+    clip: Path
+    duration: float
+    audio_start: float | None
+
+
+def stitch(
+    segments: list[Segment],
+    out: Path,
+    *,
+    audio_source: Path | None,
+    comment: str | None = None,
+) -> Path:
+    """Join normalized clips and build the soundtrack segment by segment, so removed or
+    new shots keep the remaining audio in sync with the picture."""
+    if not segments:
+        raise MediaError("Nothing to stitch")
+    out.parent.mkdir(parents=True, exist_ok=True)
+    video_only = out.with_name(out.stem + ".video.mp4")
+    concat_clips([s.clip for s in segments], video_only)
+    if audio_source is None or not probe(audio_source).has_audio:
+        args = ["-i", str(video_only), "-c:v", "copy"]
+    else:
+        parts, labels = [], []
+        for index, segment in enumerate(segments):
+            if segment.audio_start is None:
+                parts.append(
+                    f"anullsrc=r=44100:cl=stereo,atrim=duration={segment.duration:.3f}[a{index}]"
+                )
+            else:
+                end = segment.audio_start + segment.duration
+                parts.append(
+                    f"[1:a]atrim=start={segment.audio_start:.3f}:end={end:.3f},"
+                    f"asetpts=PTS-STARTPTS,aresample=44100,"
+                    f"aformat=channel_layouts=stereo,apad=whole_dur={segment.duration:.3f}[a{index}]"
+                )
+            labels.append(f"[a{index}]")
+        graph = ";".join(parts) + f";{''.join(labels)}concat=n={len(labels)}:v=0:a=1[a]"
+        args = [
+            "-i",
+            str(video_only),
+            "-i",
+            str(audio_source),
+            "-filter_complex",
+            graph,
+            "-map",
+            "0:v",
+            "-map",
+            "[a]",
+            "-c:v",
+            "copy",
+            "-c:a",
+            "aac",
+            "-shortest",
+        ]
+    metadata = ["-metadata", f"comment={comment}"] if comment else []
+    try:
+        _run(["ffmpeg", "-v", "error", "-y", *args, *metadata, "-movflags", "+faststart", str(out)])
+    finally:
+        video_only.unlink(missing_ok=True)
+    return out

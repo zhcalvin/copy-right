@@ -23,6 +23,9 @@ class ModelOption(BaseModel):
     name: str
     # For video_edit_v2v: the request modes (treatments) this model serves.
     modes: list[str] = Field(default_factory=list)
+    # Input clip length the model accepts; shorter clips are padded, longer ones split.
+    min_seconds: float | None = None
+    max_seconds: float | None = None
 
 
 StatusOutcome = Literal["ok", "auth_error", "quota_error"]
