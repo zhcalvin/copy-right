@@ -82,11 +82,12 @@ export function ShotCard({ projectId, shot, characters, dimmed, highlighted = fa
             ref={video}
             className="size-full object-contain"
             src={projectFileUrl(projectId, clip)}
-            poster={poster ? projectFileUrl(projectId, poster) : undefined}
+            // A generated clip shows its own first frame; the source keyframe would hide it.
+            poster={!resultClip && poster ? projectFileUrl(projectId, poster) : undefined}
             muted
             loop
             playsInline
-            preload="none"
+            preload={resultClip ? "metadata" : "none"}
           />
         ) : (
           <div className="flex items-center justify-center size-full text-sm text-indigo-100 bg-indigo-950">
@@ -96,6 +97,11 @@ export function ShotCard({ projectId, shot, characters, dimmed, highlighted = fa
         <span className="absolute top-2 left-2 px-1.5 py-0.5 font-mono text-xs text-white bg-black/60 rounded">
           {shot.shot_id}
         </span>
+        {resultClip && (
+          <span className="absolute top-2 right-2 px-1.5 py-0.5 text-xs text-white bg-brand-600/90 rounded">
+            {t("board.generated")}
+          </span>
+        )}
         {seconds !== null && (
           <span className="absolute right-2 bottom-2 px-1.5 py-0.5 font-mono text-xs text-white bg-black/60 rounded">
             {t("shot.seconds", { seconds: seconds.toFixed(1) })}

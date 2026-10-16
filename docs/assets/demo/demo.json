@@ -1,23 +1,57 @@
 {
-  "shots": [
-    "s007",
-    "s008",
-    "s009",
-    "s010",
-    "s011",
-    "s012"
-  ],
-  "swapped": [
-    "s007",
-    "s012"
-  ],
-  "regenerated": [
-    "s010"
-  ],
-  "swap_model": "wan2.2-animate-mix",
-  "edit_model": "qwen-image-2.0-pro",
-  "i2v_model": "wan2.6-i2v",
-  "quality": "pro",
-  "start": 2.767,
-  "end": 24.067
+  "storyboard_version": 16,
+  "quality": "preview",
+  "shots": {
+    "s001": {
+      "treatment": "swap",
+      "mode": null,
+      "voice": false,
+      "lipsynced": false,
+      "reused": true
+    },
+    "s002": {
+      "treatment": "swap",
+      "mode": null,
+      "voice": false,
+      "lipsynced": false,
+      "reused": true
+    },
+    "s003": {
+      "treatment": "swap",
+      "mode": null,
+      "voice": false,
+      "lipsynced": false,
+      "reused": true
+    },
+    "s004": {
+      "treatment": "swap",
+      "mode": null,
+      "voice": true,
+      "lipsynced": true,
+      "reused": true
+    },
+    "s005": {
+      "treatment": "swap",
+      "mode": null,
+      "voice": false,
+      "lipsynced": false,
+      "reused": true
+    },
+    "s006": {
+      "treatment": "swap",
+      "mode": null,
+      "voice": false,
+      "lipsynced": false,
+      "reused": true
+    }
+  },
+  "cast": {
+    "Presenter in leather jacket": "English_Persuasive_Man",
+    "Audience member shouting": null,
+    "Audience member with glasses": null,
+    "Audience member covering face": null,
+    "Audience member laughing": null,
+    "Woman in green sweater": null,
+    "Woman in the background": null
+  }
 }

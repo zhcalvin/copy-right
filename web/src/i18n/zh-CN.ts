@@ -319,9 +319,10 @@ export const zhCN: Record<MessageKey, string> = {
   "editor.line": "台词",
   "cost.total": "预计费用 {amount}",
   "cost.reused": "{count} 个镜头沿用上次生成的结果（免费）",
-  "cost.unknown": "{count} 次调用暂无公开价格",
+  "cost.unknown": "其中 {count} 次调用暂无公开价格",
   "cost.note": "按官方原价估算，未计入免费额度和折扣。",
   "editor.describe": "重新解析此镜头",
   "editor.describing": "解析中…",
   "editor.describeFailed": "重新解析失败",
+  "board.generated": "已生成",
 };

@@ -57,7 +57,7 @@ All AI work goes through third-party APIs behind pluggable adapters. There are t
 - Live-verified adapters: DashScope, MiniMax (speech). Written from docs, unit-tested with mocked HTTP but not yet run with real keys: Gemini generation, Runway, Kling, ElevenLabs, Sync Labs (`tests/test_more_adapters.py`)
 - Real adapters: `app/providers/dashscope/` (video understanding, image edit, character swap, image-to-video; native API, temporary `oss://` uploads and async tasks in `native.py`), `app/providers/gemini/` (shared HTTP helpers and error mapping in `app/providers/http.py`)
 - Generation request contracts (image edit, video edit, image-to-video): `app/capabilities/generation.py`; clip normalising and stitching: `app/tools/media.py`
-- README demo assets (`docs/assets/demo/`) are built by `scripts/make_demo.py`, which calls paid APIs and caches each generated shot
+- README demo assets (`docs/assets/demo/`) are built from a finished render by `scripts/demo_assets.py` (local FFmpeg only; the render itself is made in the app)
 - Project page (upload, parse progress, storyboard board): `web/src/pages/ProjectPage.tsx`, `web/src/project/`
 - Storyboard schema and treatment rules: `app/storyboard/schema.py`, `app/storyboard/treatment.py`
 - Editing (M3): versions and saves in `app/storyboard/versions.py`; `changed_layers` against the latest parse in `app/storyboard/diff.py`; plot edits via `llm_text` in `app/pipeline/plot_edit.py`; reference images in `app/pipeline/assets.py`; routes in `app/api/storyboard.py`; UI in `web/src/project/` (`ShotEditor`, `AssetPanel`/`AssetEditor`, `PlotEditPanel`, `VersionMenu`)

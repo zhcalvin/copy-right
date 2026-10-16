@@ -320,11 +320,12 @@ export const en = {
   "editor.line": "Line",
   "cost.total": "Estimated cost {amount}",
   "cost.reused": "{count} shots reused from an earlier render (free)",
-  "cost.unknown": "{count} calls with no listed price",
+  "cost.unknown": "Price unknown for {count} of the calls",
   "cost.note": "List prices; free quotas and discounts not included.",
   "editor.describe": "Describe again",
   "editor.describing": "Describing…",
   "editor.describeFailed": "Describing the shot failed",
+  "board.generated": "Generated",
 } as const;
 
 export type MessageKey = keyof typeof en;
