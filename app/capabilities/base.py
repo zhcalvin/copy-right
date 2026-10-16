@@ -31,9 +31,14 @@ OPTIONAL_CAPABILITIES = frozenset({Capability.TTS, Capability.LIPSYNC, Capabilit
 
 
 class ProviderError(Exception):
-    """Base class for every adapter failure."""
+    """Base class for every adapter failure.
+
+    ``transient`` errors are worth retrying later: the worker keeps the job instead of
+    failing it (see :mod:`app.pipeline.worker`).
+    """
 
     error_type: ClassVar[str] = "provider_error"
+    transient: ClassVar[bool] = False
 
     def __init__(self, message: str, *, provider: str | None = None) -> None:
         super().__init__(message)
@@ -48,6 +53,20 @@ class QuotaError(ProviderError):
     error_type = "quota_error"
 
 
+class RateLimited(ProviderError):
+    """Too many requests right now (as opposed to an empty balance)."""
+
+    error_type = "rate_limited"
+    transient = True
+
+
+class ProviderUnreachable(ProviderError):
+    """The connection failed or dropped; the request may not have arrived."""
+
+    error_type = "provider_unreachable"
+    transient = True
+
+
 class ContentRejected(ProviderError):
     error_type = "content_rejected"
 
@@ -58,6 +77,7 @@ class InputInvalid(ProviderError):
 
 class ProviderTimeout(ProviderError):
     error_type = "provider_timeout"
+    transient = True
 
 
 # ---------------------------------------------------------------------------
@@ -70,6 +90,7 @@ InputMode = Literal["url", "upload", "base64"]
 class InputLimits(BaseModel):
     """What a provider accepts. The orchestrator pre-processes inputs to fit."""
 
+    min_duration_s: float | None = None
     max_duration_s: float | None = None
     max_resolution: tuple[int, int] | None = None
     max_file_mb: float | None = None

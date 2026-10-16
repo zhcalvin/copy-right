@@ -10,6 +10,7 @@ import mimetypes
 from pathlib import Path
 from typing import Any, ClassVar
 
+from app.capabilities import llm_text
 from app.capabilities.base import Artifact, Capability, ContentRejected
 from app.capabilities.video_understanding import (
     UnderstandingRequest,
@@ -35,7 +36,9 @@ def _inline(path: str) -> dict[str, Any]:
 
 class GeminiAdapter(InlineAdapter):
     provider_id: ClassVar[str] = "gemini"
-    capabilities: ClassVar[frozenset[Capability]] = frozenset({Capability.VIDEO_UNDERSTANDING})
+    capabilities: ClassVar[frozenset[Capability]] = frozenset(
+        {Capability.VIDEO_UNDERSTANDING, Capability.LLM_TEXT}
+    )
 
     def _headers(self) -> dict[str, str]:
         return {"x-goog-api-key": self.credential("api_key")}
@@ -50,6 +53,8 @@ class GeminiAdapter(InlineAdapter):
         )
 
     async def run(self, capability: Capability, request: dict[str, Any]) -> Artifact:
+        if capability == Capability.LLM_TEXT:
+            return await self._text(llm_text.parse_request(request, provider=self.provider_id))
         if capability != Capability.VIDEO_UNDERSTANDING:
             return await super().run(capability, request)
         parsed = parse_request(request, provider=self.provider_id)
@@ -80,6 +85,24 @@ class GeminiAdapter(InlineAdapter):
         return await parse_with_retry(
             fetch_text, provider=self.provider_id, expected={s.shot_id for s in request.shots}
         )
+
+    async def _text(self, request: llm_text.TextRequest) -> Artifact:
+        payload: dict[str, Any] = {
+            "contents": [{"role": "user", "parts": [{"text": request.prompt}]}]
+        }
+        if request.system:
+            payload["system_instruction"] = {"parts": [{"text": request.system}]}
+        if request.json_output:
+            payload["generationConfig"] = {"response_mime_type": "application/json"}
+        response = await send(
+            self.http(),
+            self.provider_id,
+            "POST",
+            f"{self.base_url()}/models/{self.require_model()}:generateContent",
+            headers=self._headers(),
+            json=payload,
+        )
+        return llm_text.text_artifact(self._reply_text(response.json()), model=self.model)
 
     def _reply_text(self, body: dict[str, Any]) -> str:
         block = (body.get("promptFeedback") or {}).get("blockReason")

@@ -140,3 +140,62 @@ async def test_new_credentials_build_a_new_adapter(engine, monkeypatch):
         enqueue_job(session, capability=Capability.TTS, provider="elevenlabs", request={})
     await worker.run_once()
     assert [c["api_key"] for c in built] == ["first-key-1111", "second-key-2222"]
+
+
+async def test_rate_limited_submit_waits_and_retries(engine, monkeypatch):
+    from app.capabilities.base import RateLimited
+    from app.pipeline import worker as worker_module
+    from app.providers.mock.adapter import MockAdapter
+
+    monkeypatch.setattr(worker_module, "BACKOFF_S", (0.0, 0.0))
+    original = MockAdapter.submit
+    calls = {"n": 0}
+
+    async def busy_once(self, capability, request):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise RateLimited("Throttling.RateQuota", provider="mock")
+        return await original(self, capability, request)
+
+    monkeypatch.setattr(MockAdapter, "submit", busy_once)
+    with Session(engine) as session:
+        job = enqueue_job(session, capability=Capability.LLM_TEXT, provider="mock", request={})
+    worker = Worker(engine)
+    await worker.run_once()
+    assert _job(engine, job.id).status == JobStatus.QUEUED  # kept, not failed
+    await worker.run_once()
+    assert _job(engine, job.id).status == JobStatus.RUNNING
+
+
+async def test_transient_poll_errors_keep_the_remote_task(engine, monkeypatch):
+    from app.capabilities.base import InputInvalid, ProviderUnreachable
+    from app.pipeline import worker as worker_module
+    from app.providers.mock.adapter import MockAdapter
+
+    monkeypatch.setattr(worker_module, "BACKOFF_S", (0.0, 0.0))
+    monkeypatch.setattr(worker_module, "MAX_TRANSIENT_RETRIES", 2)
+    with Session(engine) as session:
+        job = enqueue_job(session, capability=Capability.LIPSYNC, provider="mock", request={})
+    worker = Worker(engine)
+    await worker.run_once()  # submitted
+
+    async def unreachable(self, handle):
+        raise ProviderUnreachable("Cannot reach the provider", provider="mock")
+
+    monkeypatch.setattr(MockAdapter, "poll", unreachable)
+    for _ in range(2):
+        await worker.run_once()
+        assert _job(engine, job.id).status == JobStatus.RUNNING
+    await worker.run_once()  # retries used up
+    failed = _job(engine, job.id)
+    assert failed.status == JobStatus.FAILED and failed.error_type == "provider_unreachable"
+
+    # A non-transient error on submit fails at once: it may have reached the provider.
+    async def bad(self, capability, request):
+        raise InputInvalid("bad", provider="mock")
+
+    monkeypatch.setattr(MockAdapter, "submit", bad)
+    with Session(engine) as session:
+        other = enqueue_job(session, capability=Capability.TTS, provider="mock", request={})
+    await worker.run_once()
+    assert _job(engine, other.id).status == JobStatus.FAILED

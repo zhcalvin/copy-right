@@ -17,7 +17,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy import Engine
-from sqlmodel import Session, func, select
+from sqlmodel import Session, select
 
 from app.capabilities.base import Capability
 from app.capabilities.video_understanding import ShotOut, UnderstandingResult
@@ -37,6 +37,7 @@ from app.storyboard.schema import (
     StoryboardDoc,
     Visual,
 )
+from app.storyboard.versions import next_version
 from app.tools.media import MediaError, VideoInfo, cut_clip, extract_frame, probe, sample_times
 from app.tools.scene_detect import (
     DEFAULT_THRESHOLD,
@@ -296,13 +297,6 @@ def build_storyboard(
             _shot(p, described.get(p.shot_id), known_characters, known_scenes) for p in prepared
         ],
     )
-
-
-def next_version(session: Session, project_id: str) -> int:
-    latest = session.exec(
-        select(func.max(Storyboard.version)).where(Storyboard.project_id == project_id)
-    ).one()
-    return (latest or 0) + 1
 
 
 def on_job_finished(session: Session, job: Job) -> None:

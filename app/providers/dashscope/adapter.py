@@ -1,7 +1,7 @@
 """Alibaba Cloud Model Studio (DashScope).
 
-``video_understanding`` uses the OpenAI-compatible endpoint; ``image_edit`` and
-``video_edit_v2v`` use the native API (see :mod:`app.providers.dashscope.native`).
+``video_understanding`` uses the OpenAI-compatible endpoint; ``image_edit``,
+``video_edit_v2v`` and ``image_to_video`` use the native API (see :mod:`app.providers.dashscope.native`).
 
 Video understanding verified against https://help.aliyun.com/zh/model-studio/vision on 2026-10-14:
 - a shot is sent as ``{"type": "video", "video": [image data URLs], "fps": f}``;
@@ -15,6 +15,7 @@ import math
 from pathlib import Path
 from typing import Any, ClassVar
 
+from app.capabilities import llm_text
 from app.capabilities.base import (
     Artifact,
     Capability,
@@ -43,9 +44,11 @@ from app.tools.media import MediaError, probe
 
 MIN_FRAMES = 4
 FPS_RANGE = (0.1, 10.0)
-# Character swap (wan2.2-animate-mix) accepts source clips of 2–30 s.
-SWAP_DURATION_S = (2.0, 30.0)
-SWAP_MODES = {"standard": "wan-std", "pro": "wan-pro"}
+# Wan Animate (swap = animate-mix, motion = animate-move) accepts 2–30 s clips;
+# Wan video edit accepts 2–10 s.
+CLIP_DURATION_S = {"swap": (2.0, 30.0), "motion": (2.0, 30.0), "edit": (2.0, 10.0)}
+ANIMATE_MODES = {"standard": "wan-std", "pro": "wan-pro"}
+EDIT_RESOLUTION = {"standard": "720P", "pro": "1080P"}
 # Wan image-to-video takes whole seconds; shorter shots are generated longer and trimmed.
 I2V_DURATION_S = (2, 15)
 ASYNC_CAPABILITIES = frozenset({Capability.VIDEO_EDIT_V2V, Capability.IMAGE_TO_VIDEO})
@@ -69,6 +72,7 @@ class DashScopeAdapter(InlineAdapter):
     capabilities: ClassVar[frozenset[Capability]] = frozenset(
         {
             Capability.VIDEO_UNDERSTANDING,
+            Capability.LLM_TEXT,
             Capability.IMAGE_EDIT,
             Capability.VIDEO_EDIT_V2V,
             Capability.IMAGE_TO_VIDEO,
@@ -91,6 +95,8 @@ class DashScopeAdapter(InlineAdapter):
         )
 
     async def run(self, capability: Capability, request: dict[str, Any]) -> Artifact:
+        if capability == Capability.LLM_TEXT:
+            return await self._text(llm_text.parse_request(request, provider=self.provider_id))
         if capability == Capability.IMAGE_EDIT:
             return await self._edit_image(
                 parse(ImageEditRequest, request, provider=self.provider_id)
@@ -111,7 +117,7 @@ class DashScopeAdapter(InlineAdapter):
                 parse(ImageToVideoRequest, request, provider=self.provider_id)
             )
         else:
-            task_id = await self._start_swap(
+            task_id = await self._start_video_edit(
                 parse(VideoEditRequest, request, provider=self.provider_id)
             )
         return JobHandle(
@@ -144,7 +150,7 @@ class DashScopeAdapter(InlineAdapter):
         )
         return response.json()
 
-    async def _start_swap(self, request: VideoEditRequest) -> str:
+    async def _start_video_edit(self, request: VideoEditRequest) -> str:
         model = self.require_model()
         video = Path(request.video)
         try:
@@ -153,39 +159,64 @@ class DashScopeAdapter(InlineAdapter):
             raise InputInvalid(
                 f"Cannot read the source clip: {exc}", provider=self.provider_id
             ) from exc
-        low, high = SWAP_DURATION_S
+        low, high = CLIP_DURATION_S[request.mode]
         if not low <= duration <= high:
             raise InputInvalid(
-                f"Character swap needs a {low:.0f}–{high:.0f} s clip; this one is {duration:.1f} s",
+                f"Video {request.mode} needs a {low:.0f}–{high:.0f} s clip; "
+                f"this one is {duration:.1f} s",
                 provider=self.provider_id,
             )
         headers = self._headers()
-        image_url = await native.upload_temporary(
-            self.http(), self._native(), headers, model, Path(request.reference_images[0])
-        )
         video_url = await native.upload_temporary(
             self.http(), self._native(), headers, model, video
         )
+        if request.mode == "edit":
+            path, body = self._edit_body(model, request, video_url)
+        else:
+            image_url = await native.upload_temporary(
+                self.http(), self._native(), headers, model, Path(request.reference_images[0])
+            )
+            path = "image2video/video-synthesis"
+            body = {
+                "model": model,
+                "input": {"image_url": image_url, "video_url": video_url},
+                "parameters": {"mode": ANIMATE_MODES[request.quality]},
+            }
         response = await send(
             self.http(),
             self.provider_id,
             "POST",
-            f"{self._native()}/services/aigc/image2video/video-synthesis",
+            f"{self._native()}/services/aigc/{path}",
             headers={
                 **headers,
                 "X-DashScope-Async": "enable",
                 "X-DashScope-OssResourceResolve": "enable",
             },
-            json={
-                "model": model,
-                "input": {"image_url": image_url, "video_url": video_url},
-                "parameters": {"mode": SWAP_MODES[request.quality]},
-            },
+            json=body,
         )
         task_id = (response.json().get("output") or {}).get("task_id")
         if not task_id:
             raise InputInvalid("The provider did not return a task id", provider=self.provider_id)
         return task_id
+
+    @staticmethod
+    def _edit_body(
+        model: str, request: VideoEditRequest, video_url: str
+    ) -> tuple[str, dict[str, Any]]:
+        media = [
+            {"type": "video", "url": video_url},
+            *({"type": "reference_image", "url": data_url(p)} for p in request.reference_images),
+        ]
+        return "video-generation/video-synthesis", {
+            "model": model,
+            "input": {"prompt": request.prompt, "media": media},
+            "parameters": {
+                "resolution": EDIT_RESOLUTION[request.quality],
+                "audio_setting": "origin",
+                "prompt_extend": True,
+                "watermark": False,
+            },
+        }
 
     async def _start_i2v(self, request: ImageToVideoRequest) -> str:
         low, high = I2V_DURATION_S
@@ -217,6 +248,33 @@ class DashScopeAdapter(InlineAdapter):
         if not task_id:
             raise InputInvalid("The provider did not return a task id", provider=self.provider_id)
         return task_id
+
+    # -- text (synchronous) -----------------------------------------------------------
+
+    async def _text(self, request: llm_text.TextRequest) -> Artifact:
+        messages = [
+            *([{"role": "system", "content": request.system}] if request.system else []),
+            {"role": "user", "content": request.prompt},
+        ]
+        payload: dict[str, Any] = {
+            "model": self.require_model(),
+            "messages": messages,
+            "enable_thinking": False,
+        }
+        if request.json_output:
+            payload["response_format"] = {"type": "json_object"}
+        response = await send(
+            self.http(),
+            self.provider_id,
+            "POST",
+            f"{self.base_url()}/chat/completions",
+            headers=self._headers(),
+            json=payload,
+        )
+        body = response.json()
+        return llm_text.text_artifact(
+            _message_text(body), model=self.model, usage=body.get("usage")
+        )
 
     # -- image edit (synchronous) -----------------------------------------------------
 

@@ -65,6 +65,8 @@ class Storyboard(SQLModel, table=True):
     version: int
     content: dict[str, Any] = Field(sa_column=Column(JSON, nullable=False))
     source: StoryboardSource
+    # A short human-readable summary, e.g. the plot instruction or "Restored version 2".
+    note: str | None = None
     created_at: datetime = Field(default_factory=utcnow)
 
 

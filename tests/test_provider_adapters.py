@@ -12,6 +12,7 @@ from app.capabilities.base import (
     ProviderError,
     ProviderTimeout,
     QuotaError,
+    RateLimited,
     RemoteStatus,
 )
 from app.providers.dashscope.adapter import DashScopeAdapter
@@ -66,7 +67,10 @@ def _client(handler) -> httpx.AsyncClient:
     [
         (401, {"error": {"message": "bad"}}, AuthError),
         (400, {"error": {"status": "INVALID_ARGUMENT", "message": "API_KEY_INVALID"}}, AuthError),
-        (429, {"error": {"code": "Throttling"}}, QuotaError),
+        (429, {"error": {"code": "Throttling.RateQuota"}}, RateLimited),
+        (429, {"error": {"message": "Your prepayment credits are depleted"}}, QuotaError),
+        (402, {}, QuotaError),
+        (400, {"code": "Arrearage", "message": "overdue"}, QuotaError),
         (
             400,
             {"code": "DataInspectionFailed", "message": "data_inspection_failed"},
@@ -275,3 +279,18 @@ async def test_gemini_connection_check():
     assert seen[0].url.path == "/v1beta/models"
     with pytest.raises(InputInvalid):
         await GeminiAdapter(credentials=GEMINI, client=client).submit(Capability.TTS, {})
+
+
+async def test_gemini_text():
+    seen = {}
+
+    def handler(request):
+        seen["body"] = json.loads(request.content)
+        return _gemini('{"summary": "fine"}')
+
+    adapter = GeminiAdapter(credentials=GEMINI, model="gemini-test", client=_client(handler))
+    handle = await adapter.submit(Capability.LLM_TEXT, {"system": "s", "prompt": "p"})
+    artifact = await adapter.fetch_result(handle)
+    assert artifact.data == {"text": '{"summary": "fine"}'}
+    assert seen["body"]["system_instruction"] == {"parts": [{"text": "s"}]}
+    assert seen["body"]["generationConfig"] == {"response_mime_type": "application/json"}

@@ -21,6 +21,8 @@ Translations = dict[str, dict[str, str]]
 class ModelOption(BaseModel):
     id: str
     name: str
+    # For video_edit_v2v: the request modes (treatments) this model serves.
+    modes: list[str] = Field(default_factory=list)
 
 
 StatusOutcome = Literal["ok", "auth_error", "quota_error"]

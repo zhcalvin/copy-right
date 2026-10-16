@@ -1,3 +1,4 @@
+import clsx from "clsx";
 import { useState } from "react";
 
 import { api, projectFileUrl } from "../api/client";
@@ -28,6 +29,8 @@ export function ParsePanel({ project, hasStoryboard, onStarted, onReplaceVideo }
   const [cuts, setCuts] = useState<CutLevel>("normal");
   const [error, setError] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
+  // Once there is a storyboard the source and parse options fold into one line.
+  const [expanded, setExpanded] = useState(!hasStoryboard || project.status === "failed");
 
   const start = async () => {
     setStarting(true);
@@ -41,6 +44,18 @@ export function ParsePanel({ project, hasStoryboard, onStarted, onReplaceVideo }
       setStarting(false);
     }
   };
+
+  if (!expanded) {
+    return (
+      <section className={clsx(CARD, "flex-row flex-wrap items-center gap-3 py-3")}>
+        <span className="text-sm font-medium text-stone-700">{t("parse.source")}</span>
+        <span className="text-sm text-stone-500">{t("parse.againHint")}</span>
+        <button type="button" className={clsx(BTN_SECONDARY, "ml-auto")} onClick={() => setExpanded(true)}>
+          {t("parse.showSource")}
+        </button>
+      </section>
+    );
+  }
 
   return (
     <section className={CARD}>
@@ -103,6 +118,11 @@ export function ParsePanel({ project, hasStoryboard, onStarted, onReplaceVideo }
             <button type="button" className={BTN_SECONDARY} disabled={starting} onClick={onReplaceVideo}>
               {t("upload.replace")}
             </button>
+            {hasStoryboard && (
+              <button type="button" className={clsx(BTN_LINK, "ml-auto")} onClick={() => setExpanded(false)}>
+                {t("parse.hideSource")}
+              </button>
+            )}
           </div>
         </div>
       </div>

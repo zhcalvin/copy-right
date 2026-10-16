@@ -19,7 +19,9 @@ from app.capabilities.base import (
     PollResult,
     ProviderError,
     ProviderTimeout,
+    ProviderUnreachable,
     QuotaError,
+    RateLimited,
     RemoteStatus,
 )
 
@@ -28,6 +30,9 @@ from app.capabilities.base import (
 # "data_inspection_failed"; Gemini answers a bad key with HTTP 400 "API_KEY_INVALID".
 MODERATION_MARKERS = ("datainspectionfailed", "inappropriate", "safety", "moderation")
 AUTH_MARKERS = ("apikeyinvalid", "invalidapikey")
+# A 429 is a rate limit ("Throttling.RateQuota") unless it talks about money. DashScope
+# reports an overdue account as HTTP 400 "Arrearage".
+BALANCE_MARKERS = ("arrearage", "insufficient", "balance", "credit", "billing", "depleted")
 
 
 def _flat(text: str) -> str:
@@ -64,7 +69,9 @@ def raise_for_response(response: httpx.Response, provider: str) -> None:
         raise ContentRejected(message, provider=provider)
     if code in (401, 403) or any(marker in flat for marker in AUTH_MARKERS):
         raise AuthError(message, provider=provider)
-    if code in (402, 429):
+    if code == 429 and not any(marker in flat for marker in BALANCE_MARKERS):
+        raise RateLimited(message, provider=provider)
+    if code in (402, 429) or "arrearage" in flat:
         raise QuotaError(message, provider=provider)
     if code in (408, 504):
         raise ProviderTimeout(message, provider=provider)
@@ -92,7 +99,7 @@ async def send(
         except httpx.TransportError as exc:
             if attempt < retries:
                 continue
-            raise ProviderError(
+            raise ProviderUnreachable(
                 f"Cannot reach the provider: {type(exc).__name__}", provider=provider
             ) from exc
     raise_for_response(response, provider)

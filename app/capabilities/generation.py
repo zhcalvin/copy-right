@@ -7,7 +7,7 @@ provider's (usually short-lived) download URL. Callers download it promptly.
 
 from typing import Any, Literal, TypeVar
 
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, Field, ValidationError, model_validator
 
 from app.capabilities.base import InputInvalid
 
@@ -22,15 +22,32 @@ class ImageEditRequest(BaseModel):
     n: int = Field(default=1, ge=1, le=4)
 
 
+VideoEditMode = Literal["swap", "edit", "motion"]
+
+
 class VideoEditRequest(BaseModel):
-    """Re-render a source clip. ``swap`` replaces the main character with the one in
-    ``reference_images`` while keeping the clip's motion, camera and lighting."""
+    """Re-render a source clip, keeping its timing.
+
+    - ``swap``: replace the main character with ``reference_images[0]``, keeping the clip's
+      motion, camera and lighting;
+    - ``edit``: follow ``prompt`` (e.g. "give everyone animal heads"), using up to 4
+      ``reference_images``; works for several people at once;
+    - ``motion``: animate ``reference_images[0]`` (a new first frame) with the clip's motion.
+    """
 
     video: str
-    reference_images: list[str] = Field(min_length=1)
-    mode: Literal["swap"] = "swap"
-    prompt: str | None = None
+    reference_images: list[str] = Field(default_factory=list, max_length=4)
+    mode: VideoEditMode = "swap"
+    prompt: str | None = Field(default=None, max_length=5000)
     quality: Literal["standard", "pro"] = "standard"
+
+    @model_validator(mode="after")
+    def _inputs_for_mode(self) -> "VideoEditRequest":
+        if self.mode in ("swap", "motion") and not self.reference_images:
+            raise ValueError(f"{self.mode} needs a reference image")
+        if self.mode == "edit" and not (self.prompt or "").strip():
+            raise ValueError("edit needs a prompt")
+        return self
 
 
 class ImageToVideoRequest(BaseModel):

@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-import type { Project } from "../api/types";
+import type { Project, Storyboard } from "../api/types";
 import { useI18n } from "../i18n";
 import { BTN_LINK, ERROR_BOX } from "../lib/ui";
 import { ParsePanel } from "../project/ParsePanel";
@@ -13,7 +13,7 @@ import { navigate } from "../router";
 
 export function ProjectPage({ projectId }: { projectId: string }) {
   const { t } = useI18n();
-  const { state, storyboard, replace } = useProject(projectId);
+  const { state, storyboard, replace, replaceStoryboard } = useProject(projectId);
 
   return (
     <>
@@ -24,7 +24,12 @@ export function ProjectPage({ projectId }: { projectId: string }) {
       {state.kind === "missing" && <div className={ERROR_BOX}>{t("project.notFound")}</div>}
       {state.kind === "error" && <div className={ERROR_BOX}>{state.message}</div>}
       {state.kind === "ready" && (
-        <ProjectBody project={state.project} storyboard={storyboard} onProject={replace} />
+        <ProjectBody
+          project={state.project}
+          storyboard={storyboard}
+          onProject={replace}
+          onStoryboard={replaceStoryboard}
+        />
       )}
     </>
   );
@@ -34,9 +39,10 @@ interface ProjectBodyProps {
   project: Project;
   storyboard: ReturnType<typeof useProject>["storyboard"];
   onProject: (project: Project) => void;
+  onStoryboard: (storyboard: Storyboard) => void;
 }
 
-function ProjectBody({ project, storyboard, onProject }: ProjectBodyProps) {
+function ProjectBody({ project, storyboard, onProject, onStoryboard }: ProjectBodyProps) {
   const { t } = useI18n();
   const [replacing, setReplacing] = useState(false);
   const hasStoryboard = storyboard.kind === "ready";
@@ -88,7 +94,9 @@ function ProjectBody({ project, storyboard, onProject }: ProjectBodyProps) {
           {t("board.loadFailed")}: {storyboard.message}
         </div>
       )}
-      {storyboard.kind === "ready" && <StoryboardBoard projectId={project.id} storyboard={storyboard.storyboard} />}
+      {storyboard.kind === "ready" && (
+        <StoryboardBoard projectId={project.id} storyboard={storyboard.storyboard} onChange={onStoryboard} />
+      )}
     </>
   );
 }

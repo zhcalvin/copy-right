@@ -40,7 +40,8 @@ export function useProject(projectId: string) {
 
   const project = state.kind === "ready" ? state.project : null;
   const parsing = project?.status === "parsing";
-  const ready = project?.status === "ready";
+  // Any status after parsing has a storyboard to show.
+  const ready = project !== null && ["ready", "generating", "done", "failed"].includes(project.status);
 
   useEffect(() => {
     if (!parsing) return;
@@ -55,12 +56,18 @@ export function useProject(projectId: string) {
     api
       .storyboard(projectId)
       .then((sb) => !cancelled && setStoryboard({ kind: "ready", storyboard: sb }))
-      .catch((error: Error) => !cancelled && setStoryboard({ kind: "error", message: error.message }));
+      .catch((error: Error) => {
+        if (cancelled) return;
+        // A failed first parse has no storyboard yet; that is not an error worth showing.
+        if (error instanceof ApiError && error.status === 404) setStoryboard({ kind: "none" });
+        else setStoryboard({ kind: "error", message: error.message });
+      });
     return () => {
       cancelled = true;
     };
   }, [ready, projectId]);
 
   const replace = useCallback((next: Project) => setState({ kind: "ready", project: next }), []);
-  return { state, storyboard, replace };
+  const replaceStoryboard = useCallback((next: Storyboard) => setStoryboard({ kind: "ready", storyboard: next }), []);
+  return { state, storyboard, replace, replaceStoryboard, reload: load };
 }

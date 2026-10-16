@@ -58,7 +58,10 @@ All AI work goes through third-party APIs behind pluggable adapters. There are t
 - README demo assets (`docs/assets/demo/`) are built by `scripts/make_demo.py`, which calls paid APIs and caches each generated shot
 - Project page (upload, parse progress, storyboard board): `web/src/pages/ProjectPage.tsx`, `web/src/project/`
 - Storyboard schema and treatment rules: `app/storyboard/schema.py`, `app/storyboard/treatment.py`
-- Job worker (persists external task IDs, resumes after restart): `app/pipeline/worker.py`
+- Editing (M3): versions and saves in `app/storyboard/versions.py`; `changed_layers` against the latest parse in `app/storyboard/diff.py`; plot edits via `llm_text` in `app/pipeline/plot_edit.py`; reference images in `app/pipeline/assets.py`; routes in `app/api/storyboard.py`; UI in `web/src/project/` (`ShotEditor`, `AssetPanel`/`AssetEditor`, `PlotEditPanel`, `VersionMenu`)
+- `llm_text` contract (system + prompt in, text out): `app/capabilities/llm_text.py`
+- Saving provider results locally (download or copy): `app/pipeline/artifacts.py`; the mock adapter makes real tinted media with FFmpeg (`app/providers/mock/media.py`)
+- Job worker (persists external task IDs, resumes after restart, retries `transient` errors with backoff, async hooks): `app/pipeline/worker.py`
 - Logo: `docs/assets/logo.png` (full size), `web/public/logo.png` (256px)
 
 ## UI language

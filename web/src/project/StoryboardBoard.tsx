@@ -1,117 +1,114 @@
-import clsx from "clsx";
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 
-import type { Storyboard } from "../api/types";
-import { useI18n } from "../i18n";
-import { BTN_LINK, CARD } from "../lib/ui";
-import { ShotCard } from "./ShotCard";
+import type { Shot, Storyboard, Treatment } from "../api/types";
+import { labelFor, useI18n } from "../i18n";
+import { TAG } from "../lib/ui";
+import { AssetEditor, type AssetRef } from "./AssetEditor";
+import { AssetPanel, type Filter } from "./AssetPanel";
+import { PlotEditPanel } from "./PlotEditPanel";
+import { ShotCard, TREATMENT_TAG } from "./ShotCard";
+import { ShotEditor } from "./ShotEditor";
+import { VersionMenu } from "./VersionMenu";
 
-type Filter = { kind: "character" | "scene"; id: string } | null;
+interface StoryboardBoardProps {
+  projectId: string;
+  storyboard: Storyboard;
+  onChange: (storyboard: Storyboard) => void;
+  /** Generated clips by shot id, shown instead of the source once a render finishes. */
+  results?: Record<string, string>;
+}
 
-const CHIP = "px-2.5 py-1 text-xs text-left rounded-full border transition-colors";
-
-export function StoryboardBoard({ projectId, storyboard }: { projectId: string; storyboard: Storyboard }) {
+export function StoryboardBoard({ projectId, storyboard, onChange, results }: StoryboardBoardProps) {
   const { t } = useI18n();
   const [filter, setFilter] = useState<Filter>(null);
+  const [editing, setEditing] = useState<Shot | null>(null);
+  const [asset, setAsset] = useState<AssetRef | null>(null);
+  const [highlight, setHighlight] = useState<Set<string>>(new Set());
+  const onPreview = useCallback((ids: string[]) => setHighlight(new Set(ids)), []);
   const characters = useMemo(
     () => new Map(storyboard.characters.map((c) => [c.character_id, c])),
     [storyboard.characters],
   );
 
-  const matches = (shotIndex: number): boolean => {
+  const matches = (shot: Shot): boolean => {
     if (!filter) return true;
-    const assets = storyboard.shots[shotIndex].assets;
-    return filter.kind === "character" ? assets.character_ids.includes(filter.id) : assets.scene_id === filter.id;
+    return filter.kind === "character" ? shot.assets.character_ids.includes(filter.id) : shot.assets.scene_id === filter.id;
   };
-  const matchCount = storyboard.shots.filter((_, index) => matches(index)).length;
-  const toggle = (next: NonNullable<Filter>) =>
-    setFilter((current) => (current?.kind === next.kind && current.id === next.id ? null : next));
+  const matchCount = storyboard.shots.filter(matches).length;
+  const counts = storyboard.shots.reduce<Partial<Record<Treatment, number>>>(
+    (acc, shot) => ({ ...acc, [shot.edit.treatment]: (acc[shot.edit.treatment] ?? 0) + 1 }),
+    {},
+  );
 
   return (
     <section className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
         <h2 className="text-lg font-semibold">{t("board.title")}</h2>
+        <VersionMenu projectId={projectId} storyboard={storyboard} onRestored={onChange} />
         <span className="text-sm text-stone-500">
-          {t("board.version", { version: storyboard.version })} ·{" "}
           {t("board.summary", {
             shots: storyboard.shots.length,
             characters: storyboard.characters.length,
             scenes: storyboard.scenes.length,
           })}
         </span>
+        <span className="flex flex-wrap gap-1">
+          {(Object.entries(counts) as [Treatment, number][])
+            .filter(([treatment]) => treatment !== "keep")
+            .map(([treatment, count]) => (
+              <span key={treatment} className={`${TAG} ${TREATMENT_TAG[treatment]}`}>
+                {labelFor(t, "treatment", treatment)} × {count}
+              </span>
+            ))}
+        </span>
         <span className="ml-auto text-xs text-stone-400">{t("board.hint")}</span>
       </div>
 
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
-        <aside className={clsx(CARD, "shrink-0 gap-3 lg:sticky lg:top-4 lg:w-64")}>
-          <ElementList
-            title={t("board.characters")}
-            items={storyboard.characters.map((c) => ({ id: c.character_id, label: c.name, hint: c.description }))}
-            active={filter?.kind === "character" ? filter.id : null}
-            onPick={(id) => toggle({ kind: "character", id })}
-          />
-          <ElementList
-            title={t("board.scenes")}
-            items={storyboard.scenes.map((s) => ({ id: s.scene_id, label: s.description || s.scene_id, hint: s.scene_id }))}
-            active={filter?.kind === "scene" ? filter.id : null}
-            onPick={(id) => toggle({ kind: "scene", id })}
-          />
-          {filter && (
-            <div className="flex items-center justify-between text-xs text-stone-500">
-              {t("board.filtered", { count: matchCount })}
-              <button type="button" className={BTN_LINK} onClick={() => setFilter(null)}>
-                {t("board.showAll")}
-              </button>
-            </div>
-          )}
-        </aside>
+      <PlotEditPanel projectId={projectId} onApplied={onChange} onPreview={onPreview} />
 
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
+        <AssetPanel
+          projectId={projectId}
+          storyboard={storyboard}
+          filter={filter}
+          matchCount={matchCount}
+          onFilter={setFilter}
+          onEdit={setAsset}
+        />
         <div className="grid flex-1 gap-4 min-w-0 sm:grid-cols-2 xl:grid-cols-3">
-          {storyboard.shots.map((shot, index) => (
+          {storyboard.shots.map((shot) => (
             <ShotCard
               key={shot.shot_id}
               projectId={projectId}
               shot={shot}
               characters={characters}
-              dimmed={!matches(index)}
+              dimmed={!matches(shot)}
+              highlighted={highlight.has(shot.shot_id)}
+              resultClip={results?.[shot.shot_id]}
+              onOpen={() => setEditing(shot)}
             />
           ))}
         </div>
       </div>
+
+      {editing && (
+        <ShotEditor
+          projectId={projectId}
+          storyboard={storyboard}
+          shot={editing}
+          onClose={() => setEditing(null)}
+          onSaved={onChange}
+        />
+      )}
+      {asset && (
+        <AssetEditor
+          projectId={projectId}
+          storyboard={storyboard}
+          asset={asset}
+          onClose={() => setAsset(null)}
+          onSaved={onChange}
+        />
+      )}
     </section>
-  );
-}
-
-interface ElementListProps {
-  title: string;
-  items: { id: string; label: string; hint: string }[];
-  active: string | null;
-  onPick: (id: string) => void;
-}
-
-function ElementList({ title, items, active, onPick }: ElementListProps) {
-  if (items.length === 0) return null;
-  return (
-    <div className="flex flex-col gap-2">
-      <h3 className="text-xs font-semibold tracking-wide text-stone-500 uppercase">{title}</h3>
-      <div className="flex flex-wrap gap-1.5">
-        {items.map((item) => (
-          <button
-            key={item.id}
-            type="button"
-            title={item.hint}
-            className={clsx(
-              CHIP,
-              active === item.id
-                ? "text-white bg-brand-600 border-brand-600"
-                : "text-stone-700 bg-white border-stone-200 hover:border-brand-500",
-            )}
-            onClick={() => onPick(item.id)}
-          >
-            {item.label}
-          </button>
-        ))}
-      </div>
-    </div>
   );
 }

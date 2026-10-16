@@ -1,16 +1,21 @@
 import type {
+  Candidate,
   CapabilityInfo,
   CapabilitySelection,
   ConnectionResult,
   CredentialView,
   Health,
+  ParseLanguage,
   ParseOptions,
   PresetSpec,
   Project,
+  Proposal,
   ProviderSpec,
+  SavedStoryboard,
   SettingsRead,
   StorageSpec,
   Storyboard,
+  VersionInfo,
 } from "./types";
 
 export class ApiError extends Error {
@@ -68,7 +73,38 @@ export const api = {
     return request<Project>(`${project(id)}/video`, { method: "POST", body: form });
   },
   parseProject: (id: string, options: ParseOptions) => request<Project>(`${project(id)}/parse`, json("POST", options)),
-  storyboard: (id: string) => request<Storyboard>(`${project(id)}/storyboard`),
+  storyboard: (id: string, version?: number) =>
+    request<Storyboard>(`${project(id)}/storyboard${version ? `?version=${version}` : ""}`),
+  versions: (id: string) => request<VersionInfo[]>(`${project(id)}/storyboard/versions`),
+  saveStoryboard: (id: string, storyboard: Storyboard, note?: string) =>
+    request<SavedStoryboard>(
+      `${project(id)}/storyboard`,
+      json("PUT", { storyboard, base_version: storyboard.version, note }),
+    ),
+  restoreVersion: (id: string, version: number) =>
+    request<Storyboard>(`${project(id)}/storyboard/restore`, json("POST", { version })),
+
+  uploadReference: (id: string, assetId: string, file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    return request<Storyboard>(`${project(id)}/assets/${encodeURIComponent(assetId)}/images`, {
+      method: "POST",
+      body: form,
+    });
+  },
+  removeReference: (id: string, assetId: string, path: string) =>
+    request<Storyboard>(`${project(id)}/assets/${encodeURIComponent(assetId)}/images/remove`, json("POST", { path })),
+  generateReference: (id: string, assetId: string, prompt: string) =>
+    request<Candidate>(`${project(id)}/assets/${encodeURIComponent(assetId)}/generate`, json("POST", { prompt })),
+  candidates: (id: string) => request<Candidate[]>(`${project(id)}/assets/candidates`),
+  useCandidate: (id: string, jobId: string) =>
+    request<Storyboard>(`${project(id)}/assets/candidates/use`, json("POST", { job_id: jobId })),
+
+  startPlotEdit: (id: string, instruction: string, language: ParseLanguage) =>
+    request<Proposal>(`${project(id)}/plot-edits`, json("POST", { instruction, language })),
+  plotEdit: (id: string, jobId: string) => request<Proposal>(`${project(id)}/plot-edits/${encodeURIComponent(jobId)}`),
+  applyPlotEdit: (id: string, jobId: string, keys: string[]) =>
+    request<SavedStoryboard>(`${project(id)}/plot-edits/${encodeURIComponent(jobId)}/apply`, json("POST", { keys })),
 
   setupStatus: () => request<{ configured: boolean }>("/setup/status"),
   capabilities: () => request<CapabilityInfo[]>("/capabilities"),

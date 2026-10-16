@@ -98,6 +98,8 @@ class ShotEdit(BaseModel):
 
 
 class ShotGeneration(BaseModel):
+    # Target length in seconds for shots without a source clip (treatment "new").
+    duration: float | None = Field(default=None, gt=0, le=15)
     prompt: str | None = None
     first_frame: str | None = None
     last_frame: str | None = None

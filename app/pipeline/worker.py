@@ -7,9 +7,11 @@ resubmitting (no double billing).
 
 import asyncio
 import hashlib
+import inspect
 import json
 import logging
-from collections.abc import Callable, Sequence
+import time
+from collections.abc import Awaitable, Callable, Sequence
 
 from sqlalchemy import Engine
 from sqlmodel import Session, select
@@ -23,8 +25,14 @@ from app.providers.registry import ProviderNotImplemented, Registry, build_adapt
 
 logger = logging.getLogger(__name__)
 
-# Called with (session, job) after a job reaches SUCCEEDED or FAILED.
-JobHook = Callable[[Session, Job], None]
+# Transient failures (rate limits, dropped connections, timeouts) are retried with
+# exponential backoff before the job is failed. Submits only retry rate limits: any
+# other failure may have reached the provider, and resubmitting could bill twice.
+MAX_TRANSIENT_RETRIES = 8
+BACKOFF_S = (5.0, 120.0)
+
+# Called with (session, job) after a job reaches SUCCEEDED or FAILED. May be async.
+JobHook = Callable[[Session, Job], None | Awaitable[None]]
 
 
 class Worker:
@@ -42,6 +50,8 @@ class Worker:
         self._hooks = tuple(hooks)
         self._adapters: dict[tuple[str, str | None, str], Adapter] = {}
         self._job_adapters: dict[str, Adapter] = {}
+        self._retries: dict[str, int] = {}
+        self._not_before: dict[str, float] = {}
         self._task: asyncio.Task[None] | None = None
 
     # -- lifecycle -----------------------------------------------------------------
@@ -77,8 +87,10 @@ class Worker:
                 .where(Job.status.in_([JobStatus.QUEUED, JobStatus.RUNNING]))
                 .order_by(Job.created_at)
             ).all()
+            now = time.monotonic()
             for job in active:
-                await self._advance(session, job)
+                if self._not_before.get(job.id, 0.0) <= now:
+                    await self._advance(session, job)
 
     async def _advance(self, session: Session, job: Job) -> None:
         try:
@@ -86,10 +98,14 @@ class Worker:
             if job.status == JobStatus.QUEUED:
                 handle = await adapter.submit(Capability(job.capability), job.request)
                 update_job(session, job, status=JobStatus.RUNNING, external_id=handle.external_id)
+                self._clear_retry(job.id)
                 return
             await self._poll(session, job, adapter)
+            self._clear_retry(job.id)
         except ProviderError as exc:
-            self._finish(
+            if self._should_retry(job, exc):
+                return
+            await self._finish(
                 session,
                 job,
                 status=JobStatus.FAILED,
@@ -97,22 +113,43 @@ class Worker:
                 error=redact(str(exc), self._secrets_for(job)),
             )
         except (ProviderNotImplemented, KeyError) as exc:
-            self._finish(
+            await self._finish(
                 session, job, status=JobStatus.FAILED, error_type="not_implemented", error=str(exc)
             )
 
-    def _finish(self, session: Session, job: Job, **changes: object) -> None:
+    def _should_retry(self, job: Job, exc: ProviderError) -> bool:
+        retryable = exc.transient and (
+            job.status == JobStatus.RUNNING or exc.error_type == "rate_limited"
+        )
+        attempts = self._retries.get(job.id, 0)
+        if not retryable or attempts >= MAX_TRANSIENT_RETRIES:
+            return False
+        low, high = BACKOFF_S
+        delay = min(high, low * 2**attempts)
+        logger.warning("job %s: %s, retrying in %.0fs", job.id, exc.error_type, delay)
+        self._retries = {**self._retries, job.id: attempts + 1}
+        self._not_before = {**self._not_before, job.id: time.monotonic() + delay}
+        return True
+
+    def _clear_retry(self, job_id: str) -> None:
+        self._retries = {k: v for k, v in self._retries.items() if k != job_id}
+        self._not_before = {k: v for k, v in self._not_before.items() if k != job_id}
+
+    async def _finish(self, session: Session, job: Job, **changes: object) -> None:
         update_job(session, job, **changes)
+        self._clear_retry(job.id)
         self._job_adapters = {k: v for k, v in self._job_adapters.items() if k != job.id}
         for hook in self._hooks:
             try:
-                hook(session, job)
+                outcome = hook(session, job)
+                if inspect.isawaitable(outcome):
+                    await outcome
             except Exception:  # a broken hook must not wedge the queue
                 logger.exception("job hook failed for job %s", job.id)
 
     async def _poll(self, session: Session, job: Job, adapter: Adapter) -> None:
         if job.external_id is None:
-            self._finish(
+            await self._finish(
                 session,
                 job,
                 status=JobStatus.FAILED,
@@ -129,9 +166,11 @@ class Worker:
         result = await adapter.poll(handle)
         if result.status == RemoteStatus.SUCCEEDED:
             artifact = await adapter.fetch_result(handle)
-            self._finish(session, job, status=JobStatus.SUCCEEDED, result=artifact.model_dump())
+            await self._finish(
+                session, job, status=JobStatus.SUCCEEDED, result=artifact.model_dump()
+            )
         elif result.status == RemoteStatus.FAILED:
-            self._finish(
+            await self._finish(
                 session,
                 job,
                 status=JobStatus.FAILED,

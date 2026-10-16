@@ -1,7 +1,7 @@
 import asyncio
 from datetime import datetime
 from pathlib import Path
-from typing import Annotated, Any
+from typing import Annotated
 
 from fastapi import APIRouter, BackgroundTasks, File, Form, HTTPException, UploadFile, status
 from fastapi.responses import FileResponse
@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 from sqlmodel import select
 
 from app.core.db import SessionDep, get_engine
-from app.models import Project, ProjectStatus, Storyboard
+from app.models import Project, ProjectStatus
 from app.pipeline.parse import ParseError, ParseOptions, begin_parse, run_parse
 from app.storage.local import ensure_project_dirs, project_dir
 from app.tools.media import MediaError, probe
@@ -182,19 +182,6 @@ def parse_project(
     background.add_task(run_parse, get_engine(), project.id, options or ParseOptions())
     session.refresh(project)
     return _read(project)
-
-
-@router.get("/{project_id}/storyboard")
-def get_storyboard(project_id: str, session: SessionDep) -> dict[str, Any]:
-    _get(session, project_id)
-    latest = session.exec(
-        select(Storyboard)
-        .where(Storyboard.project_id == project_id)
-        .order_by(Storyboard.version.desc())
-    ).first()
-    if latest is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "This project has no storyboard yet")
-    return latest.content
 
 
 @router.get("/{project_id}/files/{file_path:path}")

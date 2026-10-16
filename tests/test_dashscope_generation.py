@@ -206,3 +206,66 @@ async def test_upload_with_a_broken_policy(image):
     async with httpx.AsyncClient(transport=httpx.MockTransport(recorder)) as client:
         with pytest.raises(ProviderError, match="missing"):
             await native.upload_temporary(client, NATIVE, {}, "m", image)
+
+
+async def test_video_edit_sends_prompt_and_reference_images(image, sample_video):
+    path = "/api/v1/services/aigc/video-generation/video-synthesis"
+    recorder = Recorder(
+        {
+            ("GET", "/api/v1/uploads"): httpx.Response(200, json=POLICY),
+            ("POST", "/"): httpx.Response(200),
+            ("POST", path): httpx.Response(200, json={"output": {"task_id": "t3"}}),
+        }
+    )
+    adapter = recorder.adapter("wan2.7-videoedit")
+    request = {
+        "video": str(sample_video),
+        "reference_images": [str(image), str(image)],
+        "mode": "edit",
+        "prompt": "give everyone animal heads",
+    }
+    assert (await adapter.submit(Capability.VIDEO_EDIT_V2V, request)).external_id == "t3"
+    body = json.loads(recorder.sent(path).content)
+    media = body["input"]["media"]
+    assert media[0] == {"type": "video", "url": f"oss://dashscope-instant/abc/{sample_video.name}"}
+    assert [m["type"] for m in media[1:]] == ["reference_image", "reference_image"]
+    assert media[1]["url"].startswith("data:image/png;base64,")
+    assert body["input"]["prompt"] == "give everyone animal heads"
+    assert body["parameters"]["resolution"] == "720P"
+    assert body["parameters"]["audio_setting"] == "origin"
+    # Only the video is uploaded; reference images go inline.
+    assert sum(r.url.path == "/api/v1/uploads" for r in recorder.requests) == 1
+
+
+async def test_video_edit_validation(image, sample_video):
+    adapter = Recorder({}).adapter()
+    with pytest.raises(InputInvalid, match="prompt"):
+        await adapter.submit(
+            Capability.VIDEO_EDIT_V2V, {"video": str(sample_video), "mode": "edit"}
+        )
+    with pytest.raises(InputInvalid, match="reference image"):
+        await adapter.submit(
+            Capability.VIDEO_EDIT_V2V, {"video": str(sample_video), "mode": "motion"}
+        )
+
+
+async def test_llm_text_uses_chat_completions_with_json_mode():
+    path = "/compatible-mode/v1/chat/completions"
+    reply = {
+        "choices": [{"message": {"content": '{"summary": "ok"}'}}],
+        "usage": {"total_tokens": 9},
+    }
+    recorder = Recorder({("POST", path): httpx.Response(200, json=reply)})
+    adapter = recorder.adapter("qwen-text")
+    request = {"system": "be brief", "prompt": "hello", "task": "plot_edit"}
+    handle = await adapter.submit(Capability.LLM_TEXT, request)
+    artifact = await adapter.fetch_result(handle)
+    assert artifact.kind == "text" and artifact.data == {"text": '{"summary": "ok"}'}
+    body = json.loads(recorder.sent(path).content)
+    assert body["messages"] == [
+        {"role": "system", "content": "be brief"},
+        {"role": "user", "content": "hello"},
+    ]
+    assert body["response_format"] == {"type": "json_object"} and body["model"] == "qwen-text"
+    with pytest.raises(InputInvalid):
+        await adapter.submit(Capability.LLM_TEXT, {"prompt": ""})
