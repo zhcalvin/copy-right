@@ -1,13 +1,13 @@
 """Storyboard editing: versions, manual edits, reference images and plot edits (M3)."""
 
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, File, HTTPException, UploadFile, status
 from pydantic import BaseModel, Field
 
 from app.core.db import SessionDep
 from app.models import Job, Project, StoryboardSource
-from app.pipeline import assets, plot_edit
+from app.pipeline import assets, plot_edit, reparse
 from app.storyboard.versions import (
     VersionError,
     VersionInfo,
@@ -29,7 +29,9 @@ ERROR_STATUS = {
 }
 
 
-def _http(exc: VersionError | assets.AssetError | plot_edit.PlotEditError) -> HTTPException:
+def _http(
+    exc: VersionError | assets.AssetError | plot_edit.PlotEditError | reparse.ReparseError,
+) -> HTTPException:
     code = ERROR_STATUS.get(exc.error_type, status.HTTP_422_UNPROCESSABLE_CONTENT)
     return HTTPException(code, str(exc))
 
@@ -169,6 +171,25 @@ def use_candidate(project_id: str, body: UseCandidate, session: SessionDep) -> d
         return assets.attach_image(session, project_id, asset_id, image).model_dump(mode="json")
     except (assets.AssetError, VersionError) as exc:
         raise _http(exc) from exc
+
+
+# -- describe one shot again --------------------------------------------------------
+
+
+class ReparseRequest(BaseModel):
+    language: Literal["en", "zh-CN"] = "en"
+
+
+@router.post("/{project_id}/shots/{shot_id}/describe", status_code=status.HTTP_202_ACCEPTED)
+def describe_shot(
+    project_id: str, shot_id: str, body: ReparseRequest, session: SessionDep
+) -> dict[str, str]:
+    _project(session, project_id)
+    try:
+        job = reparse.start_reparse(session, project_id, shot_id, body.language)
+    except reparse.ReparseError as exc:
+        raise _http(exc) from exc
+    return {"job_id": job.id}
 
 
 # -- plot edits ----------------------------------------------------------------------

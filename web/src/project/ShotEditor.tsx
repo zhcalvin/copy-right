@@ -2,7 +2,7 @@ import clsx from "clsx";
 import { type ReactNode, useState } from "react";
 
 import { api, projectFileUrl } from "../api/client";
-import type { Shot, Storyboard, Treatment } from "../api/types";
+import type { ParseLanguage, Shot, Storyboard, Treatment } from "../api/types";
 import { labelFor, useI18n } from "../i18n";
 import { BTN_PRIMARY, BTN_SECONDARY, ERROR_BOX, INPUT, INPUT_INLINE } from "../lib/ui";
 import { CAMERA_MOTIONS, SHOT_SIZES, TREATMENTS, replaceShot, toggleCharacter } from "./edits";
@@ -34,7 +34,7 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
 }
 
 export function ShotEditor({ projectId, storyboard, shot: initial, onClose, onSaved }: ShotEditorProps) {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const [shot, setShot] = useState<Shot>(initial);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -64,6 +64,29 @@ export function ShotEditor({ projectId, storyboard, shot: initial, onClose, onSa
                   : s.edit.trim,
             },
     }));
+
+  const [describing, setDescribing] = useState(false);
+  const describe = async () => {
+    setDescribing(true);
+    setError(null);
+    try {
+      const { job_id } = await api.describeShot(projectId, shot.shot_id, lang as ParseLanguage);
+      for (;;) {
+        await new Promise((resolve) => window.setTimeout(resolve, 2000));
+        const job = await api.job(job_id);
+        if (job.status === "failed") throw new Error(job.error ?? t("editor.describeFailed"));
+        if (job.status === "succeeded") break;
+      }
+      const next = await api.storyboard(projectId);
+      onSaved(next);
+      const fresh = next.shots.find((s) => s.shot_id === shot.shot_id);
+      if (fresh) setShot(fresh);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setDescribing(false);
+    }
+  };
 
   const save = async () => {
     setSaving(true);
@@ -102,6 +125,11 @@ export function ShotEditor({ projectId, storyboard, shot: initial, onClose, onSa
           >
             {removed ? t("editor.restore") : t("editor.remove")}
           </button>
+          {source && (
+            <button type="button" className={BTN_SECONDARY} disabled={describing} onClick={describe}>
+              {describing ? t("editor.describing") : t("editor.describe")}
+            </button>
+          )}
           {error && <span className="text-sm text-red-700">{error}</span>}
           <button type="button" className={clsx(BTN_SECONDARY, "ml-auto")} onClick={onClose}>
             {t("upload.cancel")}

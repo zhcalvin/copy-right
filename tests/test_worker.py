@@ -65,7 +65,7 @@ async def test_restart_resumes_polling_without_resubmitting(engine, monkeypatch)
 
 async def test_unimplemented_provider_fails_job(engine):
     with Session(engine) as session:
-        job = enqueue_job(session, capability=Capability.TTS, provider="elevenlabs", request={})
+        job = enqueue_job(session, capability=Capability.TTS, provider="volcengine", request={})
     await Worker(engine).run_once()
     failed = _job(engine, job.id)
     assert failed.status == JobStatus.FAILED

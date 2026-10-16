@@ -53,6 +53,8 @@ All AI work goes through third-party APIs behind pluggable adapters. There are t
 - Setup wizard and settings UI: `web/src/pages/`, `web/src/setup/`
 - Parsing (detect → slice → describe → storyboard v-next): `app/pipeline/parse.py`; shot detection in `app/tools/scene_detect.py`, FFmpeg in `app/tools/media.py`
 - `video_understanding` contract (request, lenient result parsing, prompt, chunking): `app/capabilities/video_understanding.py`
+- Cost estimates from registry `price` entries: `app/pipeline/estimate.py` (`POST /projects/{id}/renders/estimate`); describe one shot again: `app/pipeline/reparse.py`
+- Live-verified adapters: DashScope, MiniMax (speech). Written from docs, unit-tested with mocked HTTP but not yet run with real keys: Gemini generation, Runway, Kling, ElevenLabs, Sync Labs (`tests/test_more_adapters.py`)
 - Real adapters: `app/providers/dashscope/` (video understanding, image edit, character swap, image-to-video; native API, temporary `oss://` uploads and async tasks in `native.py`), `app/providers/gemini/` (shared HTTP helpers and error mapping in `app/providers/http.py`)
 - Generation request contracts (image edit, video edit, image-to-video): `app/capabilities/generation.py`; clip normalising and stitching: `app/tools/media.py`
 - README demo assets (`docs/assets/demo/`) are built by `scripts/make_demo.py`, which calls paid APIs and caches each generated shot

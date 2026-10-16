@@ -4,7 +4,9 @@ import type {
   CapabilitySelection,
   ConnectionResult,
   CredentialView,
+  Estimate,
   Health,
+  JobStatus,
   ParseLanguage,
   ParseOptions,
   PresetSpec,
@@ -108,6 +110,11 @@ export const api = {
   applyPlotEdit: (id: string, jobId: string, keys: string[]) =>
     request<SavedStoryboard>(`${project(id)}/plot-edits/${encodeURIComponent(jobId)}/apply`, json("POST", { keys })),
 
+  estimate: (id: string, quality: RenderQuality) =>
+    request<Estimate>(`${project(id)}/renders/estimate`, json("POST", { quality })),
+  describeShot: (id: string, shotId: string, language: ParseLanguage) =>
+    request<{ job_id: string }>(`${project(id)}/shots/${encodeURIComponent(shotId)}/describe`, json("POST", { language })),
+  job: (jobId: string) => request<{ status: JobStatus; error: string | null }>(`/jobs/${encodeURIComponent(jobId)}`),
   renders: (id: string) => request<Render[]>(`${project(id)}/renders`),
   render: (id: string, renderId: string) => request<Render>(`${project(id)}/renders/${encodeURIComponent(renderId)}`),
   startRender: (id: string, quality: RenderQuality, approveFrames: boolean) =>

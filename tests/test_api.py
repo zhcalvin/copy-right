@@ -37,7 +37,7 @@ def test_capabilities_providers_presets(client):
     providers = {p["id"]: p for p in client.get("/api/providers").json()}
     assert providers["mock"]["implemented"] is True
     assert providers["dashscope"]["implemented"] is True
-    assert providers["kling"]["implemented"] is False
+    assert providers["volcengine"]["implemented"] is False
 
     presets = {p["id"] for p in client.get("/api/presets").json()}
     assert presets == {"cn", "global", "demo"}

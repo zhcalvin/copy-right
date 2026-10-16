@@ -2,7 +2,7 @@ import clsx from "clsx";
 import { useEffect, useMemo, useState } from "react";
 
 import { api, projectFileUrl } from "../api/client";
-import type { Project, ProviderSpec, Render, RenderQuality, Storyboard, Treatment } from "../api/types";
+import type { Estimate, Project, ProviderSpec, Render, RenderQuality, Storyboard, Treatment } from "../api/types";
 import { labelFor, useI18n } from "../i18n";
 import { BTN_LINK, BTN_PRIMARY, BTN_SECONDARY, CARD, ERROR_BOX, INPUT, TAG } from "../lib/ui";
 import { PAID_TREATMENTS } from "./edits";
@@ -29,6 +29,18 @@ export function RenderPanel({ project, storyboard, render, onRender }: RenderPan
   useEffect(() => {
     api.providers().then(setProviders).catch(() => undefined);
   }, []);
+
+  const [estimate, setEstimate] = useState<Estimate | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .estimate(project.id, quality)
+      .then((next) => !cancelled && setEstimate(next))
+      .catch(() => !cancelled && setEstimate(null));
+    return () => {
+      cancelled = true;
+    };
+  }, [project.id, quality, storyboard.version, render?.id]);
 
   const paid = storyboard.shots.filter(
     (s) => PAID_TREATMENTS.has(s.edit.treatment) || (s.edit.voice_changed && s.edit.treatment !== "removed"),
@@ -74,6 +86,7 @@ export function RenderPanel({ project, storyboard, render, onRender }: RenderPan
             ))}
           </p>
         )}
+        {estimate && paid.length > 0 && <CostLine estimate={estimate} />}
         <div className="flex flex-wrap items-end gap-4">
           <label className="flex flex-col gap-1 text-sm">
             <span className="font-medium text-stone-700">{t("render.quality")}</span>
@@ -125,6 +138,23 @@ export function RenderPanel({ project, storyboard, render, onRender }: RenderPan
       onAction={act}
       onNew={() => setStartingNew(true)}
     />
+  );
+}
+
+const CURRENCY: Record<string, string> = { CNY: "¥", USD: "$" };
+
+function CostLine({ estimate }: { estimate: Estimate }) {
+  const { t } = useI18n();
+  const symbol = CURRENCY[estimate.currency ?? ""] ?? "";
+  return (
+    <p className="flex flex-wrap items-center gap-x-2 gap-y-1 px-3 py-2 text-sm text-stone-700 bg-amber-50 rounded-lg">
+      <span className="font-medium">
+        {t("cost.total", { amount: `${symbol}${estimate.total.toFixed(2)}` })}
+      </span>
+      {estimate.reused > 0 && <span className="text-stone-500">{t("cost.reused", { count: estimate.reused })}</span>}
+      {estimate.unknown > 0 && <span className="text-stone-500">{t("cost.unknown", { count: estimate.unknown })}</span>}
+      <span className="text-xs text-stone-400">{t("cost.note")}</span>
+    </p>
   );
 }
 

@@ -4,9 +4,12 @@ import base64
 import mimetypes
 import uuid
 from pathlib import Path
-from typing import Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 
 import httpx
+
+if TYPE_CHECKING:
+    from app.providers.registry import ModelOption
 
 from app.capabilities.base import (
     Adapter,
@@ -106,6 +109,27 @@ async def send(
     return response
 
 
+def result_file(provider: str, name: str) -> Path:
+    """Where to write a result the provider returns as bytes, or behind an authenticated
+    download. The job's artifact then points at this local file."""
+    from app.core.config import get_settings
+
+    folder = get_settings().data_dir / "provider-results" / provider
+    folder.mkdir(parents=True, exist_ok=True)
+    return folder / name
+
+
+def pcm_to_wav(pcm: bytes, out: Path, *, rate: int = 24000, channels: int = 1) -> Path:
+    import wave
+
+    with wave.open(str(out), "wb") as wav:
+        wav.setnchannels(channels)
+        wav.setsampwidth(2)
+        wav.setframerate(rate)
+        wav.writeframes(pcm)
+    return out
+
+
 class InlineAdapter(Adapter):
     """Base for synchronous APIs: the work happens in :meth:`submit`.
 
@@ -172,6 +196,14 @@ class InlineAdapter(Adapter):
     def base_url(self) -> str:
         # The default lives in registry.yaml and arrives through credential resolution.
         return self.credential("base_url").rstrip("/")
+
+    def model_option(self, capability: Capability) -> "ModelOption | None":
+        """This adapter's registry entry for its model (limits, references, modes)."""
+        from app.providers.registry import get_registry
+
+        spec = get_registry().providers.get(self.provider_id)
+        options = spec.models.get(capability, []) if spec else []
+        return next((m for m in options if m.id == self.model), None)
 
     def require_model(self) -> str:
         if not self.model:

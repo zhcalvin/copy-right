@@ -18,6 +18,24 @@ REGISTRY_PATH = Path(__file__).with_name("registry.yaml")
 Translations = dict[str, dict[str, str]]
 
 
+class Price(BaseModel):
+    """List price per unit, for estimates only (the provider's console is authoritative).
+
+    ``final`` is the price at the final quality tier (e.g. 1080P or pro mode) when it
+    differs. ``factor`` multiplies the quantity, e.g. 2 when input and output seconds are
+    both billed.
+    """
+
+    unit: Literal["second", "image", "10k_chars"]
+    amount: float = Field(ge=0)
+    final: float | None = Field(default=None, ge=0)
+    currency: Literal["CNY", "USD"] = "CNY"
+    factor: float = Field(default=1.0, gt=0)
+    # Billed seconds are whole numbers with a minimum (e.g. image-to-video).
+    whole_seconds: bool = False
+    min_quantity: float = 0.0
+
+
 class ModelOption(BaseModel):
     id: str
     name: str
@@ -26,6 +44,9 @@ class ModelOption(BaseModel):
     # Input clip length the model accepts; shorter clips are padded, longer ones split.
     min_seconds: float | None = None
     max_seconds: float | None = None
+    price: Price | None = None
+    # How many reference images the model takes (video edits); 0 = none.
+    references: int = 0
 
 
 class VoiceOption(BaseModel):
@@ -72,6 +93,15 @@ class ProviderSpec(BaseModel):
     @property
     def implemented(self) -> bool:
         return self.adapter is not None
+
+    @computed_field
+    @property
+    def implemented_capabilities(self) -> list[Capability]:
+        """What the adapter really does; the registry may list more (planned) ones."""
+        if self.adapter is None:
+            return []
+        done = _import_adapter_class(self.adapter).capabilities
+        return [c for c in self.capabilities if c in done]
 
     @model_validator(mode="after")
     def _models_match_capabilities(self) -> "ProviderSpec":

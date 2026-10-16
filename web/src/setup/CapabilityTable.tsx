@@ -91,7 +91,7 @@ export function CapabilityTable({ capabilities, providers, selections, region, o
             </div>
             {provider && (
               <div className="flex flex-wrap items-center gap-2 text-xs text-stone-500 sm:col-span-9 sm:col-start-4">
-                {!provider.implemented && <span className={clsx(TAG, "bg-amber-50 text-amber-700")}>{t("caps.adapterPending")}</span>}
+                {!provider.implemented_capabilities.includes(id) && <span className={clsx(TAG, "bg-amber-50 text-amber-700")}>{t("caps.adapterPending")}</span>}
                 <span>{localized(provider, "description", lang)}</span>
                 {provider.docs && (
                   <a href={provider.docs} target="_blank" rel="noreferrer" className="text-brand-700 hover:underline">

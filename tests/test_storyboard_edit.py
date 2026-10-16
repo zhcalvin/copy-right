@@ -7,7 +7,7 @@ from sqlmodel import Session
 
 from app.core.db import get_engine
 from app.models import Storyboard, StoryboardSource
-from app.pipeline import assets, parse, plot_edit
+from app.pipeline import assets, parse, plot_edit, reparse
 from app.pipeline.worker import Worker
 from app.storyboard.diff import affected_shots, changed_assets, refresh_edits
 from app.storyboard.schema import CharacterAction, Layer, StoryboardDoc, Treatment
@@ -193,7 +193,10 @@ def test_apply_changes_all_and_selected():
 
 
 def _worker() -> Worker:
-    return Worker(get_engine(), hooks=[parse.on_job_finished, assets.on_job_finished])
+    return Worker(
+        get_engine(),
+        hooks=[parse.on_job_finished, assets.on_job_finished, reparse.on_job_finished],
+    )
 
 
 def _drain(times: int = 4) -> None:
@@ -358,3 +361,26 @@ def test_plot_edit_needs_a_storyboard_and_settings(client, sample_video):
         session.commit()
     no_settings = client.post(f"/api/projects/{project_id}/plot-edits", json={"instruction": "x"})
     assert no_settings.status_code == 409
+
+
+def test_describe_one_shot_again(client, parsed):
+    url = f"/api/projects/{parsed}/storyboard"
+    doc = client.get(url).json()
+    doc["shots"][1]["narrative"]["description"] = "A wrong description"
+    doc["characters"][0]["reference_images"] = []
+    client.put(url, json={"storyboard": doc, "base_version": 1})
+    assert client.get(url).json()["shots"][1]["edit"]["treatment"] == "regenerate"
+
+    started = client.post(f"/api/projects/{parsed}/shots/s002/describe", json={"language": "en"})
+    assert started.status_code == 202, started.text
+    _drain()
+    latest = client.get(url).json()
+    shot = latest["shots"][1]
+    assert shot["narrative"]["description"] == "Mock description of shot s002"
+    assert shot["edit"]["treatment"] == "keep"  # a correction, not an edit
+    versions = client.get(f"{url}/versions").json()
+    assert [(v["source"], v["note"]) for v in versions[:2]] == [
+        ("user_edit", "Described s002 again"),
+        ("auto_parse", "Described s002 again"),
+    ]
+    assert client.post(f"/api/projects/{parsed}/shots/s404/describe", json={}).status_code == 404

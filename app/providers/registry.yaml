@@ -59,8 +59,10 @@ providers:
         - {id: qwen3.7-plus, name: Qwen3.7 Plus}
       # https://help.aliyun.com/zh/model-studio/qwen-image-edit-api (2026-10-14)
       image_edit:
-        - {id: qwen-image-2.0-pro, name: Qwen-Image 2.0 Pro}
-        - {id: qwen-image-2.0, name: Qwen-Image 2.0 (faster)}
+        - {id: qwen-image-2.0-pro, name: Qwen-Image 2.0 Pro, price: {unit: image, amount: 0.5}}
+        - {id: qwen-image-2.0, name: Qwen-Image 2.0 (faster), price: {unit: image, amount: 0.2}}
+      # Prices: Beijing list prices from https://help.aliyun.com/zh/model-studio/model-pricing
+      # on 2026-10-16, for estimates only. Models without `price` show as "unknown".
       # `modes`: the VideoEditRequest modes a model accepts (swap, edit, motion). A swap
       # treatment prefers an `edit` model: it handles several people and close-ups.
       # https://help.aliyun.com/zh/model-studio/wan-animate-mix-api (2026-10-14):
@@ -68,12 +70,12 @@ providers:
       # https://www.alibabacloud.com/help/zh/model-studio/wan-video-editing-api-reference
       # (2026-10-16): instruction edits of a 2–10 s clip with up to 4 reference images.
       video_edit_v2v:
-        - {id: wan2.7-videoedit, name: Wan 2.7 video edit (instructions, several people), modes: [edit], min_seconds: 2, max_seconds: 10}
-        - {id: wan2.2-animate-mix, name: Wan 2.2 Animate (one-person swap), modes: [swap], min_seconds: 2, max_seconds: 30}
+        - {id: wan2.7-videoedit, name: Wan 2.7 video edit (instructions, several people), modes: [edit], min_seconds: 2, max_seconds: 10, price: {unit: second, amount: 0.6, final: 1.0, factor: 2}}
+        - {id: wan2.2-animate-mix, name: Wan 2.2 Animate (one-person swap), modes: [swap], min_seconds: 2, max_seconds: 30, price: {unit: second, amount: 0.6, final: 0.9}}
         - {id: wan2.2-animate-move, name: Wan 2.2 Animate (move a new image), modes: [motion], min_seconds: 2, max_seconds: 30}
       # https://help.aliyun.com/zh/model-studio/image-to-video-api-reference/ (2026-10-14)
       image_to_video:
-        - {id: wan2.6-i2v, name: Wan 2.6 image to video}
+        - {id: wan2.6-i2v, name: Wan 2.6 image to video, price: {unit: second, amount: 0.6, final: 1.0, whole_seconds: true, min_quantity: 2}}
         - {id: wan2.6-i2v-flash, name: Wan 2.6 image to video (flash)}
       # https://help.aliyun.com/zh/model-studio/qwen-tts-api (2026-10-16): up to 600 chars.
       tts:
@@ -81,7 +83,7 @@ providers:
       # https://help.aliyun.com/zh/model-studio/videoretalk-api (2026-10-16): 2–120 s
       # clips, sides 640–2048 px, one task at a time.
       lipsync:
-        - {id: videoretalk, name: VideoRetalk lip-sync}
+        - {id: videoretalk, name: VideoRetalk lip-sync, price: {unit: second, amount: 0.08, min_quantity: 2}}
     voices:
       - {id: Cherry, name: Cherry 芊悦, gender: female, languages: [zh-CN, en]}
       - {id: Ethan, name: Ethan 晨煦, gender: male, languages: [zh-CN, en]}
@@ -112,7 +114,7 @@ providers:
   kling:
     name: Kling
     region: cn
-    adapter: null
+    adapter: app.providers.kling.adapter:KlingAdapter
     description: First/last-frame image to video, lip-sync.
     i18n: {zh-CN: {name: 可灵, description: 首尾帧图生视频、对口型。}}
     docs: https://kling.ai/document-api/api/get-started/authentication
@@ -121,7 +123,12 @@ providers:
     credentials:
       - {name: api_key, label: API Key, env: KLING_API_KEY}
       - {name: base_url, label: Base URL, secret: false, required: false, env: KLING_BASE_URL, default: "https://api-beijing.klingai.com"}
-    models: {}
+    # Implemented: image_to_video, from the public API reference; not live-tested yet.
+    # Lip-sync needs a public video URL (object storage) and is not wired up yet.
+    models:
+      image_to_video:
+        - {id: kling-v2-1, name: Kling 2.1}
+        - {id: kling-v2-5-turbo, name: Kling 2.5 Turbo}
     connection_test:
       url: "{base_url}/account/costs"
       headers: {Authorization: "Bearer {api_key}"}
@@ -138,12 +145,14 @@ providers:
     credentials:
       - {name: api_key, label: API Key, env: MINIMAX_API_KEY}
       - {name: base_url, label: Base URL, secret: false, required: false, env: MINIMAX_BASE_URL, default: "https://api.minimax.cn"}
-    # https://platform.minimax.cn/docs/api-reference/speech-t2a-http (2026-10-16).
+    # https://platform.minimax.cn/docs/api-reference/speech-t2a-http (2026-10-16). Prices
+    # are the list prices DashScope shows for the same models (MiniMax's own CNY page could
+    # not be checked).
     # Implemented: tts. Hailuo video is not wired up yet.
     models:
       tts:
-        - {id: speech-2.8-hd, name: Speech 2.8 HD}
-        - {id: speech-2.8-turbo, name: Speech 2.8 Turbo (faster)}
+        - {id: speech-2.8-hd, name: Speech 2.8 HD, price: {unit: 10k_chars, amount: 3.5}}
+        - {id: speech-2.8-turbo, name: Speech 2.8 Turbo (faster), price: {unit: 10k_chars, amount: 2.0}}
     voices:
       - {id: male-qn-jingying, name: 精英青年 (male), gender: male, languages: [zh-CN]}
       - {id: female-shaonv, name: 少女 (female), gender: female, languages: [zh-CN]}
@@ -166,7 +175,7 @@ providers:
     description: Native video input with structured JSON output; image models; Veo video generation.
     i18n: {zh-CN: {name: Google Gemini, description: 原生视频输入与结构化 JSON 输出；图像模型；Veo 视频生成。}}
     docs: https://ai.google.dev/gemini-api/docs
-    capabilities: [video_understanding, llm_text, image_edit, image_to_video, asr]
+    capabilities: [video_understanding, llm_text, image_edit, image_to_video, tts, asr]
     credentials:
       - {name: api_key, label: API Key, env: GEMINI_API_KEY}
       - {name: base_url, label: Base URL, secret: false, required: false, env: GEMINI_BASE_URL, default: "https://generativelanguage.googleapis.com/v1beta"}
@@ -178,6 +187,25 @@ providers:
       llm_text:
         - {id: gemini-3.8-flash, name: Gemini 3.8 Flash}
         - {id: gemini-3.5-flash-lite, name: Gemini 3.5 Flash-Lite (cheaper)}
+      # Image, Veo and TTS ids from GET /models with a live key on 2026-10-16.
+      image_edit:
+        - {id: gemini-3.1-flash-image, name: Gemini 3.1 Flash Image}
+        - {id: gemini-3-pro-image, name: Gemini 3 Pro Image}
+        - {id: gemini-nano-banana-2.1, name: Nano Banana 2.1}
+      image_to_video:
+        - {id: veo-3.1-fast-generate-preview, name: Veo 3.1 Fast}
+        - {id: veo-3.1-generate-preview, name: Veo 3.1}
+        - {id: veo-3.1-lite-generate-preview, name: Veo 3.1 Lite}
+      tts:
+        - {id: gemini-3.8-flash-tts, name: Gemini 3.8 Flash TTS}
+        - {id: gemini-3.8-flash-lite-tts, name: Gemini 3.8 Flash-Lite TTS}
+    voices:
+      - {id: Kore, name: Kore, gender: female, languages: [en, zh-CN]}
+      - {id: Puck, name: Puck, gender: male, languages: [en, zh-CN]}
+      - {id: Charon, name: Charon, gender: male, languages: [en, zh-CN]}
+      - {id: Aoede, name: Aoede, gender: female, languages: [en, zh-CN]}
+      - {id: Fenrir, name: Fenrir, gender: male, languages: [en, zh-CN]}
+      - {id: Leda, name: Leda, gender: female, languages: [en, zh-CN]}
     connection_test:
       url: "{base_url}/models"
       headers: {x-goog-api-key: "{api_key}"}
@@ -186,14 +214,22 @@ providers:
   runway:
     name: Runway
     region: global
-    adapter: null
+    adapter: app.providers.runway.adapter:RunwayAdapter
     description: Aleph video editing, Gen image to video.
     i18n: {zh-CN: {name: Runway, description: Aleph 视频编辑、Gen 系列图生视频。}}
     docs: https://docs.dev.runwayml.com/
     capabilities: [video_edit_v2v, image_to_video]
     credentials:
       - {name: api_key, label: API Secret, env: RUNWAYML_API_SECRET}
-    models: {}
+      - {name: base_url, label: Base URL, secret: false, required: false, env: RUNWAYML_BASE_URL, default: "https://api.dev.runwayml.com"}
+    # From https://docs.dev.runwayml.com/api.md on 2026-10-16; not live-tested yet.
+    models:
+      video_edit_v2v:
+        - {id: gemini_omni_flash_1.1, name: Gemini Omni Flash 1.1 (edits with references), modes: [edit], max_seconds: 10, references: 5}
+        - {id: aleph2, name: Aleph 2 (instruction edits), modes: [edit], max_seconds: 30}
+      image_to_video:
+        - {id: gen4.5, name: Gen-4.5}
+        - {id: gen4_turbo, name: Gen-4 Turbo}
     connection_test:
       url: https://api.dev.runwayml.com/v1/organization
       headers: {Authorization: "Bearer {api_key}", X-Runway-Version: "2024-11-06"}
@@ -217,14 +253,26 @@ providers:
   elevenlabs:
     name: ElevenLabs
     region: global
-    adapter: null
+    adapter: app.providers.elevenlabs.adapter:ElevenLabsAdapter
     description: Speech synthesis and voice cloning.
     i18n: {zh-CN: {name: ElevenLabs, description: 语音合成与声音克隆。}}
     docs: https://elevenlabs.io/docs
     capabilities: [tts]
     credentials:
       - {name: api_key, label: API Key, env: ELEVENLABS_API_KEY}
-    models: {}
+      - {name: base_url, label: Base URL, secret: false, required: false, env: ELEVENLABS_BASE_URL, default: "https://api.elevenlabs.io"}
+    # From https://elevenlabs.io/docs/api-reference/text-to-speech/convert on 2026-10-16;
+    # not live-tested yet. Voices are ElevenLabs' premade library voices.
+    models:
+      tts:
+        - {id: eleven_multilingual_v2, name: Multilingual v2}
+        - {id: eleven_flash_v2_5, name: Flash v2.5 (faster)}
+    voices:
+      - {id: JBFqnCBsd6RMkjVDRZzb, name: George, gender: male, languages: [en]}
+      - {id: 21m00Tcm4TlvDq8ikWAM, name: Rachel, gender: female, languages: [en]}
+      - {id: pNInz6obpgDQGcFmaJgB, name: Adam, gender: male, languages: [en]}
+      - {id: EXAVITQu4vr4xnSDxMaL, name: Sarah, gender: female, languages: [en]}
+      - {id: XB0fDUnXU5powFXDhCwa, name: Charlotte, gender: female, languages: [en]}
     connection_test:
       url: https://api.elevenlabs.io/v1/user
       headers: {xi-api-key: "{api_key}"}
@@ -232,14 +280,20 @@ providers:
   synclabs:
     name: Sync Labs
     region: global
-    adapter: null
+    adapter: app.providers.synclabs.adapter:SyncLabsAdapter
     description: Lip-sync (sync.so).
     i18n: {zh-CN: {name: Sync Labs, description: 对口型（sync.so）。}}
     docs: https://docs.sync.so/
     capabilities: [lipsync]
     credentials:
       - {name: api_key, label: API Key, env: SYNC_API_KEY}
-    models: {}
+      - {name: base_url, label: Base URL, secret: false, required: false, env: SYNC_BASE_URL, default: "https://api.sync.so"}
+    # From https://sync.so/docs/openapi.json on 2026-10-16; not live-tested yet.
+    models:
+      lipsync:
+        - {id: lipsync-2, name: Lipsync 2}
+        - {id: lipsync-2-pro, name: Lipsync 2 Pro}
+        - {id: sync-3, name: Sync 3}
     connection_test:
       url: https://api.sync.so/v2/models
       headers: {x-api-key: "{api_key}"}
@@ -286,8 +340,8 @@ presets:
       video_edit_v2v: dashscope
       image_to_video: kling
       tts: minimax
-      lipsync: kling
-      asr: dashscope
+      lipsync: dashscope
+      asr: null  # not used by the pipeline yet
   global:
     name: Global preset
     description: Gemini, Runway, fal, ElevenLabs, Sync Labs
@@ -300,7 +354,7 @@ presets:
       image_to_video: gemini
       tts: elevenlabs
       lipsync: synclabs
-      asr: gemini
+      asr: null  # not used by the pipeline yet
   demo:
     name: Demo mode
     description: Everything uses mock adapters. No keys needed.

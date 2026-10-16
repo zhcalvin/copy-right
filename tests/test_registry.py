@@ -32,12 +32,22 @@ def test_preset_regions_match():
     registry = load_registry()
     for preset_id, region in (("cn", "cn"), ("global", "global")):
         for provider_id in registry.presets[preset_id].capabilities.values():
-            assert registry.providers[provider_id].region == region
+            if provider_id is not None:
+                assert registry.providers[provider_id].region == region
 
 
 def test_implemented_providers():
     implemented = {p.id for p in load_registry().providers.values() if p.implemented}
-    assert implemented == {"mock", "dashscope", "gemini", "minimax"}
+    assert implemented == {
+        "mock",
+        "dashscope",
+        "gemini",
+        "minimax",
+        "kling",
+        "runway",
+        "elevenlabs",
+        "synclabs",
+    }
 
 
 def test_every_implemented_adapter_imports():
@@ -54,7 +64,7 @@ def test_build_mock_adapter():
 
 def test_build_unimplemented_provider_raises():
     with pytest.raises(ProviderNotImplemented):
-        build_adapter("kling")
+        build_adapter("volcengine")
 
 
 def test_build_unknown_provider_raises():
@@ -86,3 +96,14 @@ def test_display_text_is_english_with_chinese_overrides():
         assert not any("一" <= ch <= "鿿" for ch in entry.name + entry.description), entry.id
         assert set(entry.i18n) == {"zh-CN"}, entry.id
         assert set(entry.i18n["zh-CN"]) <= {"name", "description"}, entry.id
+
+
+def test_every_preset_default_has_an_adapter_for_it():
+    registry = load_registry()
+    for preset in registry.presets.values():
+        for capability, provider_id in preset.capabilities.items():
+            if provider_id is not None:
+                assert capability in registry.providers[provider_id].implemented_capabilities, (
+                    preset.id,
+                    capability,
+                )

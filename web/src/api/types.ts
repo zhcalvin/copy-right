@@ -203,6 +203,24 @@ export interface Render {
   updated_at: string;
 }
 
+export interface CostPart {
+  capability: Capability;
+  provider: string;
+  model: string | null;
+  quantity: number;
+  unit: string;
+  amount: number | null;
+  currency: string | null;
+}
+
+export interface Estimate {
+  currency: string | null;
+  total: number;
+  unknown: number;
+  reused: number;
+  shots: { shot_id: string; treatment: Treatment; reused: boolean; parts: CostPart[] }[];
+}
+
 export interface Health {
   status: string;
   ffmpeg: boolean;
@@ -261,6 +279,7 @@ export interface ProviderSpec {
   models: Partial<Record<Capability, ModelOption[]>>;
   voices: VoiceOption[];
   implemented: boolean;
+  implemented_capabilities: Capability[];
 }
 
 export interface PresetSpec {

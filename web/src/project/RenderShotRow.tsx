@@ -29,7 +29,7 @@ export function RenderShotRow({ projectId, shotId, shot, state, providers, busy,
   const { t, lang } = useI18n();
   const [hint, setHint] = useState("");
   const capability = state.step ? STEP_CAPABILITY[state.step] : "video_edit_v2v";
-  const alternatives = providers.filter((p) => p.implemented && p.capabilities.includes(capability));
+  const alternatives = providers.filter((p) => p.implemented_capabilities.includes(capability));
   const [provider, setProvider] = useState(state.provider ?? alternatives[0]?.id ?? "");
   const keyframes = shot?.source?.keyframes ?? [];
   const preview = state.first_frame ?? keyframes[Math.floor(keyframes.length / 2)];

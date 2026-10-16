@@ -72,13 +72,13 @@ def test_missing_and_duplicate_capabilities_are_rejected(client):
 
 def test_free_text_model_allowed_when_registry_lists_none(client):
     selections = [
-        {**s, "model": "  kling-custom  "} if s["capability"] == "image_to_video" else s
+        {**s, "provider": "dashscope", "model": "  asr-custom  "} if s["capability"] == "asr" else s
         for s in _preset("cn")
     ]
     saved = {
         c["capability"]: c for c in client.put("/api/settings/capabilities", json=selections).json()
     }
-    assert saved["image_to_video"]["model"] == "kling-custom"
+    assert saved["asr"]["model"] == "asr-custom"
 
 
 def test_storage_setting(client):
@@ -145,7 +145,7 @@ def test_connection_test_uses_saved_key(client, monkeypatch):
     monkeypatch.setattr(providers_api, "check_provider", fake_check)
     client.put("/api/credentials/elevenlabs", json={"values": {"api_key": SECRET}})
     assert client.post("/api/providers/elevenlabs/test").json()["status"] == "ok"
-    assert seen == {"api_key": SECRET}
+    assert seen["api_key"] == SECRET
 
 
 def test_undecryptable_credentials_return_conflict(client, monkeypatch):

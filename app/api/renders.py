@@ -1,7 +1,7 @@
 """Generation runs: start, follow, approve first frames, retry shots, cancel (M4)."""
 
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
@@ -10,6 +10,8 @@ from sqlmodel import select
 from app.core.db import SessionDep
 from app.models import Project, Render, RenderStatus
 from app.pipeline import render as pipeline
+from app.pipeline.estimate import Estimate, estimate
+from app.storyboard.versions import VersionError
 
 router = APIRouter(prefix="/projects", tags=["renders"])
 
@@ -61,6 +63,20 @@ def create_render(
     except pipeline.RenderError as exc:
         raise _http(exc) from exc
     return _read(render)
+
+
+class EstimateRequest(BaseModel):
+    quality: Literal["preview", "final"] = "preview"
+
+
+@router.post("/{project_id}/renders/estimate")
+def estimate_render(project_id: str, body: EstimateRequest, session: SessionDep) -> Estimate:
+    if session.get(Project, project_id) is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Project not found")
+    try:
+        return estimate(session, project_id, body.quality)
+    except VersionError as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
 
 
 @router.get("/{project_id}/renders")
