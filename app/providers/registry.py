@@ -28,6 +28,13 @@ class ModelOption(BaseModel):
     max_seconds: float | None = None
 
 
+class VoiceOption(BaseModel):
+    id: str
+    name: str
+    gender: Literal["female", "male", "other"] = "other"
+    languages: list[str] = Field(default_factory=list)
+
+
 StatusOutcome = Literal["ok", "auth_error", "quota_error"]
 
 
@@ -57,6 +64,8 @@ class ProviderSpec(BaseModel):
     capabilities: list[Capability]
     credentials: list[CredentialField] = Field(default_factory=list)
     models: dict[Capability, list[ModelOption]] = Field(default_factory=dict)
+    # System voices for ``tts``; the first is the default.
+    voices: list[VoiceOption] = Field(default_factory=list)
     connection_test: ConnectionTestSpec | None = None
 
     @computed_field

@@ -1,9 +1,10 @@
 import clsx from "clsx";
+import { type FormEvent, useState } from "react";
 
 import { projectFileUrl } from "../api/client";
 import type { Storyboard } from "../api/types";
 import { useI18n } from "../i18n";
-import { BTN_LINK, CARD } from "../lib/ui";
+import { BTN_LINK, BTN_SECONDARY, CARD, INPUT } from "../lib/ui";
 import type { AssetRef } from "./AssetEditor";
 
 export type Filter = { kind: "character" | "scene"; id: string } | null;
@@ -15,6 +16,7 @@ interface AssetPanelProps {
   matchCount: number;
   onFilter: (filter: Filter) => void;
   onEdit: (asset: AssetRef) => void;
+  onAddCharacter: (name: string) => Promise<void>;
 }
 
 interface Row {
@@ -33,8 +35,21 @@ function keyframeFor(storyboard: Storyboard, match: (shot: Storyboard["shots"][n
   return frames[Math.floor(frames.length / 2)] ?? null;
 }
 
-export function AssetPanel({ projectId, storyboard, filter, matchCount, onFilter, onEdit }: AssetPanelProps) {
+export function AssetPanel({ projectId, storyboard, filter, matchCount, onFilter, onEdit, onAddCharacter }: AssetPanelProps) {
   const { t } = useI18n();
+  const [name, setName] = useState("");
+  const [adding, setAdding] = useState(false);
+  const add = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!name.trim()) return;
+    setAdding(true);
+    try {
+      await onAddCharacter(name.trim());
+      setName("");
+    } finally {
+      setAdding(false);
+    }
+  };
   const characters: Row[] = storyboard.characters.map((c) => ({
     id: c.character_id,
     label: c.name,
@@ -65,6 +80,18 @@ export function AssetPanel({ projectId, storyboard, filter, matchCount, onFilter
         onPick={(id) => toggle("character", id)}
         onEdit={onEdit}
       />
+      <form className="flex gap-1.5" onSubmit={add}>
+        <input
+          className={clsx(INPUT, "min-w-0 py-1.5")}
+          placeholder={t("assets.addPlaceholder")}
+          aria-label={t("assets.addCharacter")}
+          value={name}
+          onChange={(event) => setName(event.target.value)}
+        />
+        <button type="submit" className={clsx(BTN_SECONDARY, "shrink-0 px-3 py-1.5")} disabled={adding || !name.trim()}>
+          {t("assets.add")}
+        </button>
+      </form>
       <Section
         title={t("board.scenes")}
         rows={scenes}

@@ -242,6 +242,7 @@ export function ShotEditor({ projectId, storyboard, shot: initial, onClose, onSa
                 </select>
                 <input
                   className={clsx(INPUT, "flex-1 min-w-0")}
+                  aria-label={t("editor.line")}
                   value={line.text}
                   onChange={(event) =>
                     narrative({

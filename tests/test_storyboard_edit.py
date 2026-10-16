@@ -10,7 +10,7 @@ from app.models import Storyboard, StoryboardSource
 from app.pipeline import assets, parse, plot_edit
 from app.pipeline.worker import Worker
 from app.storyboard.diff import affected_shots, changed_assets, refresh_edits
-from app.storyboard.schema import Layer, StoryboardDoc, Treatment
+from app.storyboard.schema import CharacterAction, Layer, StoryboardDoc, Treatment
 from tests.test_parse import _configure, _project, _upload
 
 
@@ -51,6 +51,19 @@ def test_new_look_for_a_character_swaps_every_shot_it_appears_in():
     refreshed = refresh_edits(base, edited)
     assert _treatments(refreshed) == {"s001": "swap", "s002": "keep", "s003": "swap"}
     assert refreshed.shots[0].edit.changed_layers == [Layer.ASSETS]
+
+
+def test_adding_a_bystander_is_an_assets_change():
+    base = _doc()
+    edited = base.model_copy(deep=True)
+    edited.characters[1].reference_images = ["assets/char_b_1.png"]
+    edited.shots[0].assets.character_ids.append("char_b")
+    edited.shots[0].narrative.characters.append(
+        CharacterAction(character_id="char_b", action=None, expression=None)
+    )
+    refreshed = refresh_edits(base, edited)
+    assert refreshed.shots[0].edit.changed_layers == [Layer.ASSETS]
+    assert refreshed.shots[0].edit.treatment == Treatment.SWAP
 
 
 def test_renaming_a_character_changes_nothing():

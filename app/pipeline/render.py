@@ -16,6 +16,8 @@ the clips are normalized and stitched with the original soundtrack.
 """
 
 import asyncio
+import hashlib
+import json
 import logging
 from pathlib import Path
 from typing import Any, Literal
@@ -63,7 +65,14 @@ NEEDS = {
 }
 
 ShotStatus = Literal["pending", "running", "frame_ready", "done", "skipped", "failed"]
-Step = Literal["frame", "video", "i2v"]
+Step = Literal["frame", "video", "i2v", "tts", "lipsync"]
+STEP_CAPABILITY: dict[str, Capability] = {
+    "frame": Capability.IMAGE_EDIT,
+    "video": Capability.VIDEO_EDIT_V2V,
+    "i2v": Capability.IMAGE_TO_VIDEO,
+    "tts": Capability.TTS,
+    "lipsync": Capability.LIPSYNC,
+}
 
 
 class RenderError(Exception):
@@ -82,6 +91,15 @@ class ShotState(BaseModel):
     piece_clips: dict[str, str] = Field(default_factory=dict)
     first_frame: str | None = None  # project-relative
     clip: str | None = None  # project-relative clip used for stitching
+    picture: str | None = None  # the clip before any re-voicing
+    # What the picture and the voice were made from; equal signatures are reused from an
+    # earlier render instead of being generated (and billed) again.
+    signature: str | None = None
+    voice_signature: str | None = None
+    reused: bool = False
+    voice: bool = False  # needs a new voice (tts, then lip-sync when available)
+    audio: str | None = None  # project-relative new voice track
+    lipsynced: bool = False
     jobs: list[str] = Field(default_factory=list)
     # Per-shot provider override after a failure, e.g. to get past moderation.
     provider: str | None = None
@@ -155,10 +173,22 @@ class _Context:
         self.root = project_dir(render.project_id)
         self.work = _work_dir(render)
         self.shots = {s.shot_id: s for s in self.doc.shots}
+        self._earlier: list[dict[str, ShotState]] | None = None
         project = session.get(Project, render.project_id)
         self.source = (
             Path(project.source_video_path) if project and project.source_video_path else None
         )
+
+    def earlier(self, shot_id: str) -> list[ShotState]:
+        """This shot's state in the project's earlier renders, newest first."""
+        if self._earlier is None:
+            rows = self.session.exec(
+                select(Render)
+                .where(Render.project_id == self.render.project_id, Render.id != self.render.id)
+                .order_by(Render.created_at.desc())
+            ).all()
+            self._earlier = [_states(row) for row in rows]
+        return [states[shot_id] for states in self._earlier if shot_id in states]
 
     def selection(self, capability: Capability, state: ShotState) -> tuple[str, str | None]:
         if state.provider and capability == _capability_for(state):
@@ -169,11 +199,7 @@ class _Context:
 
 def _capability_for(state: ShotState) -> Capability:
     """The capability of the step a failed shot will retry."""
-    if state.step == "frame":
-        return Capability.IMAGE_EDIT
-    if state.step == "i2v":
-        return Capability.IMAGE_TO_VIDEO
-    return Capability.VIDEO_EDIT_V2V
+    return STEP_CAPABILITY.get(state.step or "video", Capability.VIDEO_EDIT_V2V)
 
 
 def _enqueue(
@@ -207,14 +233,75 @@ def _fail(state: ShotState, message: str, error_type: str = "input_invalid") -> 
     return state.model_copy(update={"status": "failed", "error_type": error_type, "error": message})
 
 
+PAID = frozenset(
+    {Treatment.SWAP, Treatment.EDIT, Treatment.MOTION, Treatment.REGENERATE, Treatment.NEW}
+)
+
+
+def signatures(ctx: _Context, shot: Shot) -> tuple[str, str]:
+    """Hashes of everything the shot's picture, and then its voice, are made from."""
+    looks = [
+        (look.kind, str(look.image)) for look in plan.looks_for(ctx.base, ctx.doc, shot, ctx.root)
+    ]
+    picture = {
+        "treatment": shot.edit.treatment.value,
+        "narrative": shot.narrative.model_dump(mode="json", exclude={"dialogue"}),
+        "visual": shot.visual.model_dump(mode="json"),
+        "assets": shot.assets.model_dump(mode="json"),
+        "trim": shot.edit.trim.model_dump(mode="json") if shot.edit.trim else None,
+        "instruction": shot.edit.instruction,
+        "duration": shot.generation.duration,
+        "looks": looks,
+        "quality": ctx.render.quality,
+    }
+    voices = {c.character_id: c.voice for c in ctx.doc.characters}
+    voice = {
+        "lines": [
+            (d.character_id, d.text, voices.get(d.character_id)) for d in shot.narrative.dialogue
+        ],
+    }
+    picture_hash = _digest(picture)
+    return picture_hash, _digest({**voice, "picture": picture_hash})
+
+
+def _digest(data: Any) -> str:
+    return hashlib.sha256(json.dumps(data, sort_keys=True).encode()).hexdigest()[:16]
+
+
+def _reuse(ctx: _Context, shot: Shot, state: ShotState) -> ShotState | None:
+    """A finished result from an earlier render with the same inputs, if there is one."""
+    for earlier in ctx.earlier(shot.shot_id):
+        if earlier.signature != state.signature or not earlier.picture:
+            continue
+        if not (ctx.root / earlier.picture).is_file():
+            continue
+        found = state.model_copy(
+            update={"first_frame": earlier.first_frame, "picture": earlier.picture, "reused": True}
+        )
+        voiced = earlier.audio and earlier.clip and (ctx.root / earlier.clip).is_file()
+        if state.voice and voiced and earlier.voice_signature == state.voice_signature:
+            return found.model_copy(
+                update={
+                    "status": "done",
+                    "clip": earlier.clip,
+                    "audio": earlier.audio,
+                    "lipsynced": earlier.lipsynced,
+                }
+            )
+        return _complete(ctx, shot, found, earlier.picture)
+    return None
+
+
 def _begin(ctx: _Context, shot: Shot, state: ShotState) -> ShotState:
     treatment = state.treatment
     if treatment == Treatment.REMOVED:
         return state.model_copy(update={"status": "skipped"})
+    picture, voice = signatures(ctx, shot)
+    state = state.model_copy(update={"signature": picture, "voice_signature": voice})
+    if treatment in PAID and (reused := _reuse(ctx, shot, state)) is not None:
+        return reused
     if treatment == Treatment.KEEP:
-        return state.model_copy(
-            update={"status": "done", "clip": shot.source.clip if shot.source else None}
-        )
+        return _complete(ctx, shot, state, shot.source.clip if shot.source else None)
     if treatment == Treatment.TRIM:
         return _trim(ctx, shot, state)
     if treatment in (Treatment.SWAP, Treatment.EDIT):
@@ -230,7 +317,66 @@ def _trim(ctx: _Context, shot: Shot, state: ShotState) -> ShotState:
         cut_clip(ctx.source, shot.edit.trim.keep_start, shot.edit.trim.keep_end, out)
     except MediaError as exc:
         return _fail(state, str(exc), "media_error")
-    return state.model_copy(update={"status": "done", "clip": _rel(ctx.render, out)})
+    return _complete(ctx, shot, state, _rel(ctx.render, out))
+
+
+def _enabled(ctx: _Context, capability: Capability) -> bool:
+    try:
+        selection_for(ctx.session, capability, ctx.registry)
+    except CapabilityUnavailable:
+        return False
+    return True
+
+
+def _complete(ctx: _Context, shot: Shot, state: ShotState, clip: str | None) -> ShotState:
+    """The picture is ready. Re-voice the shot if its lines changed (tts, then lip-sync
+    when those capabilities are switched on); otherwise the shot is done."""
+    ready = state.model_copy(
+        update={"clip": clip, "picture": state.picture or clip, "error_type": None, "error": None}
+    )
+    if state.voice and state.audio is None and _enabled(ctx, Capability.TTS):
+        return _start_speech(ctx, shot, ready)
+    if (
+        state.voice
+        and state.audio
+        and not state.lipsynced
+        and clip
+        and _enabled(ctx, Capability.LIPSYNC)
+    ):
+        request = {"video": str(ctx.root / clip), "audio": str(ctx.root / state.audio)}
+        job = _enqueue(
+            ctx, shot.shot_id, ready, Capability.LIPSYNC, request, shot=shot.shot_id, step="lipsync"
+        )
+        return ready.model_copy(
+            update={"status": "running", "step": "lipsync", "jobs": [*state.jobs, job]}
+        )
+    return ready.model_copy(update={"status": "done"})
+
+
+def _language(text: str) -> str:
+    return "zh-CN" if any("\u4e00" <= char <= "\u9fff" for char in text) else "en"
+
+
+def _start_speech(ctx: _Context, shot: Shot, state: ShotState) -> ShotState:
+    text = " ".join(line.text.strip() for line in shot.narrative.dialogue if line.text.strip())
+    if not text:
+        return state.model_copy(update={"status": "done", "voice": False})
+    speakers = {c.character_id: c for c in ctx.doc.characters}
+    speaker = next(
+        (
+            speakers[line.character_id]
+            for line in shot.narrative.dialogue
+            if line.character_id in speakers
+        ),
+        None,
+    )
+    request = {
+        "text": text[:600],
+        "voice": speaker.voice if speaker else None,
+        "language": _language(text),
+    }
+    job = _enqueue(ctx, shot.shot_id, state, Capability.TTS, request, shot=shot.shot_id, step="tts")
+    return state.model_copy(update={"status": "running", "step": "tts", "jobs": [*state.jobs, job]})
 
 
 def _clip_pieces(ctx: _Context, shot_id: str, clip: Path, choice: plan.ModelChoice) -> list[Path]:
@@ -403,9 +549,11 @@ def start_render(
         quality=options.quality,
         approve_frames=options.approve_frames,
         shots={
-            s.shot_id: ShotState(treatment=s.edit.treatment, duration=_shot_duration(s)).model_dump(
-                mode="json"
-            )
+            s.shot_id: ShotState(
+                treatment=s.edit.treatment,
+                duration=_shot_duration(s),
+                voice=s.edit.voice_changed and s.edit.treatment != Treatment.REMOVED,
+            ).model_dump(mode="json")
             for s in doc.shots
         },
     )
@@ -474,7 +622,10 @@ def retry_shot(
             raise RenderError(f"{provider} cannot do {capability}")
     fresh = state.model_copy(update={"provider": provider, "model": model, "status": "pending"})
     shot = ctx.shots[shot_id]
-    if state.step == "i2v" or (state.step == "video" and state.treatment == Treatment.MOTION):
+    if state.step in ("tts", "lipsync"):
+        audio = None if state.step == "tts" else state.audio
+        next_state = _complete(ctx, shot, fresh.model_copy(update={"audio": audio}), state.clip)
+    elif state.step == "i2v" or (state.step == "video" and state.treatment == Treatment.MOTION):
         next_state = _start_after_frame(ctx, shot, fresh)
     elif state.step == "video":
         next_state = _start_video(ctx, shot, fresh)
@@ -483,6 +634,23 @@ def retry_shot(
     else:
         next_state = _begin(ctx, shot, fresh)
     _update_shot(session, render, shot_id, next_state)
+    return render
+
+
+def skip_lipsync(session: Session, render: Render, shot_id: str) -> Render:
+    """Keep a failed lip-sync shot with its new voice over the unsynced picture."""
+    _, state = _shot_action(session, render, shot_id)
+    if state.status != "failed" or state.step != "lipsync" or not state.audio:
+        raise RenderError("Only a failed lip-sync can be skipped", error_type="conflict")
+    done = state.model_copy(
+        update={
+            "status": "done",
+            "clip": state.picture or state.clip,
+            "error_type": None,
+            "error": None,
+        }
+    )
+    _update_shot(session, render, shot_id, done)
     return render
 
 
@@ -557,7 +725,7 @@ async def on_job_finished(session: Session, job: Job) -> None:
         )
         return
     step, piece = meta.get("step"), int(meta.get("piece") or 0)
-    default = ".png" if step == "frame" else ".mp4"
+    default = {"frame": ".png", "tts": ".wav"}.get(step, ".mp4")
     name = f"{shot_id}_{step}{piece if state.pieces > 1 else ''}_{job.id[:6]}{suffix_for(job.result, default)}"
     target = _work_dir(render) / name
     try:
@@ -582,26 +750,31 @@ def _advance(
     saved: Path,
 ) -> ShotState:
     relative = _rel(render, saved)
+    ctx = _Context(session, render, get_registry())
+    shot = ctx.shots[shot_id]
     if step == "frame":
         framed = state.model_copy(update={"first_frame": relative})
         if render.approve_frames:
             return framed.model_copy(update={"status": "frame_ready"})
-        ctx = _Context(session, render, get_registry())
-        return _start_after_frame(ctx, ctx.shots[shot_id], framed)
+        return _start_after_frame(ctx, shot, framed)
     if step == "i2v":
-        return state.model_copy(update={"status": "done", "clip": relative})
+        return _complete(ctx, shot, state, relative)
+    if step == "tts":
+        return _complete(ctx, shot, state.model_copy(update={"audio": relative}), state.clip)
+    if step == "lipsync":
+        return _complete(ctx, shot, state.model_copy(update={"lipsynced": True}), relative)
     pieces = {**state.piece_clips, str(piece): relative}
     if len(pieces) < state.pieces:
         return state.model_copy(update={"piece_clips": pieces})
-    clips = [project_dir(render.project_id) / pieces[str(i)] for i in range(state.pieces)]
+    clips = [ctx.root / pieces[str(i)] for i in range(state.pieces)]
     if len(clips) == 1:
-        return state.model_copy(update={"status": "done", "piece_clips": pieces, "clip": relative})
+        return _complete(ctx, shot, state.model_copy(update={"piece_clips": pieces}), relative)
     try:
         joined = _join(clips, _work_dir(render) / f"{shot_id}_joined.mp4")
     except MediaError as exc:
         return _fail(state, str(exc), "media_error")
-    return state.model_copy(
-        update={"status": "done", "piece_clips": pieces, "clip": _rel(render, joined)}
+    return _complete(
+        ctx, shot, state.model_copy(update={"piece_clips": pieces}), _rel(render, joined)
     )
 
 
@@ -657,7 +830,7 @@ def segments_for(render: Render, doc: StoryboardDoc, project: Project, work: Pat
         if state is None or state.status == "skipped" or state.clip is None:
             continue
         clip = root / state.clip
-        generated = state.treatment not in (Treatment.KEEP, Treatment.TRIM)
+        generated = state.treatment not in (Treatment.KEEP, Treatment.TRIM) or state.lipsynced
         normalized = normalize_clip(
             clip,
             work / f"{shot.shot_id}_final.mp4",
@@ -672,7 +845,10 @@ def segments_for(render: Render, doc: StoryboardDoc, project: Project, work: Pat
             audio_start: float | None = shot.edit.trim.keep_start
         else:
             audio_start = shot.source.start if shot.source else None
-        segments.append(Segment(clip=normalized, duration=state.duration, audio_start=audio_start))
+        voice = root / state.audio if state.audio else None
+        segments.append(
+            Segment(clip=normalized, duration=state.duration, audio_start=audio_start, voice=voice)
+        )
     return segments
 
 

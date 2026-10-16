@@ -58,6 +58,7 @@ export interface ShotEdit {
   treatment_reason: string | null;
   trim: { keep_start: number; keep_end: number } | null;
   instruction: string | null;
+  voice_changed: boolean;
 }
 
 export interface Shot {
@@ -171,12 +172,16 @@ export type RenderQuality = "preview" | "final";
 export interface ShotRender {
   treatment: Treatment;
   status: ShotRenderStatus;
-  step: "frame" | "video" | "i2v" | null;
+  step: "frame" | "video" | "i2v" | "tts" | "lipsync" | null;
   duration: number;
   mode: string | null;
   pieces: number;
   first_frame: string | null;
   clip: string | null;
+  voice: boolean;
+  audio: string | null;
+  lipsynced: boolean;
+  reused: boolean;
   provider: string | null;
   model: string | null;
   error_type: string | null;
@@ -237,6 +242,13 @@ export type Region = "cn" | "global" | "any";
 /** Per-locale overrides of display text, e.g. { "zh-CN": { name: "…" } }. */
 export type Translations = Record<string, Partial<Record<"name" | "description", string>>>;
 
+export interface VoiceOption {
+  id: string;
+  name: string;
+  gender: "female" | "male" | "other";
+  languages: string[];
+}
+
 export interface ProviderSpec {
   id: string;
   name: string;
@@ -247,6 +259,7 @@ export interface ProviderSpec {
   capabilities: Capability[];
   credentials: CredentialFieldSpec[];
   models: Partial<Record<Capability, ModelOption[]>>;
+  voices: VoiceOption[];
   implemented: boolean;
 }
 

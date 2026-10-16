@@ -130,6 +130,15 @@ def retry(
         raise _http(exc) from exc
 
 
+@router.post("/{project_id}/renders/{render_id}/shots/{shot_id}/skip-lipsync")
+def skip_lipsync(project_id: str, render_id: str, shot_id: str, session: SessionDep) -> RenderRead:
+    render = _render(session, project_id, render_id)
+    try:
+        return _read(pipeline.skip_lipsync(session, render, shot_id))
+    except pipeline.RenderError as exc:
+        raise _http(exc) from exc
+
+
 @router.post("/{project_id}/renders/{render_id}/cancel")
 def cancel(project_id: str, render_id: str, session: SessionDep) -> RenderRead:
     render = _render(session, project_id, render_id)

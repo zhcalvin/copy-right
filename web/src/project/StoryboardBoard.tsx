@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useState } from "react";
 
+import { api } from "../api/client";
 import type { Shot, Storyboard, Treatment } from "../api/types";
 import { labelFor, useI18n } from "../i18n";
 import { TAG } from "../lib/ui";
@@ -29,6 +30,24 @@ export function StoryboardBoard({ projectId, storyboard, onChange, results }: St
     () => new Map(storyboard.characters.map((c) => [c.character_id, c])),
     [storyboard.characters],
   );
+
+  const addCharacter = async (name: string) => {
+    const numbers = storyboard.characters.map((c) => Number(/^char_(\d+)$/.exec(c.character_id)?.[1] ?? 0));
+    const character = {
+      character_id: `char_${Math.max(0, ...numbers) + 1}`,
+      name,
+      description: "",
+      reference_images: [],
+      voice: null,
+    };
+    const saved = await api.saveStoryboard(
+      projectId,
+      { ...storyboard, characters: [...storyboard.characters, character] },
+      t("assets.addedNote", { name }),
+    );
+    onChange(saved.storyboard);
+    setAsset({ kind: "character", item: character });
+  };
 
   const matches = (shot: Shot): boolean => {
     if (!filter) return true;
@@ -74,6 +93,7 @@ export function StoryboardBoard({ projectId, storyboard, onChange, results }: St
           matchCount={matchCount}
           onFilter={setFilter}
           onEdit={setAsset}
+          onAddCharacter={addCharacter}
         />
         <div className="grid flex-1 gap-4 min-w-0 sm:grid-cols-2 xl:grid-cols-3">
           {storyboard.shots.map((shot) => (

@@ -72,13 +72,13 @@ def test_missing_and_duplicate_capabilities_are_rejected(client):
 
 def test_free_text_model_allowed_when_registry_lists_none(client):
     selections = [
-        {**s, "model": "  speech-custom  "} if s["capability"] == "tts" else s
+        {**s, "model": "  kling-custom  "} if s["capability"] == "image_to_video" else s
         for s in _preset("cn")
     ]
     saved = {
         c["capability"]: c for c in client.put("/api/settings/capabilities", json=selections).json()
     }
-    assert saved["tts"]["model"] == "speech-custom"
+    assert saved["image_to_video"]["model"] == "kling-custom"
 
 
 def test_storage_setting(client):

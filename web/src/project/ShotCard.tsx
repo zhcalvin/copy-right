@@ -134,8 +134,13 @@ export function ShotCard({ projectId, shot, characters, dimmed, highlighted = fa
               {characters.get(id)?.name ?? id}
             </span>
           ))}
+          {shot.edit.voice_changed && !removed && (
+            <span className={clsx(TAG, "ml-auto text-sky-800 bg-sky-100")} title={t("voice.hint")}>
+              🎙 {t("voice.badge")}
+            </span>
+          )}
           <span
-            className={clsx(TAG, "ml-auto", TREATMENT_TAG[treatment])}
+            className={clsx(TAG, !shot.edit.voice_changed && "ml-auto", TREATMENT_TAG[treatment])}
             title={shot.edit.treatment_reason ?? undefined}
           >
             {shot.edit.treatment_locked && "🔒 "}

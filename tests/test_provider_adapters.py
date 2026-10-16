@@ -172,7 +172,7 @@ async def test_dashscope_errors(frames):
         await no_model.submit(Capability.VIDEO_UNDERSTANDING, _request(frames))
 
     with pytest.raises(InputInvalid, match="does not implement"):
-        await no_model.submit(Capability.TTS, {})
+        await no_model.submit(Capability.ASR, {})
 
     with pytest.raises(InputInvalid, match="Bad video understanding request"):
         await no_model.submit(Capability.VIDEO_UNDERSTANDING, {"shots": []})

@@ -7,6 +7,7 @@ import { labelFor, useI18n } from "../i18n";
 import { BTN_PRIMARY, BTN_SECONDARY, ERROR_BOX, INPUT } from "../lib/ui";
 import { replaceCharacter, replaceScene } from "./edits";
 import { Modal } from "./Modal";
+import { useVoices } from "./useVoices";
 
 const POLL_MS = 2000;
 
@@ -53,6 +54,8 @@ export function AssetEditor({ projectId, storyboard, asset, onClose, onSaved }: 
       : storyboard.scenes.find((s) => s.scene_id === id);
   const [name, setName] = useState(asset.kind === "character" ? asset.item.name : "");
   const [description, setDescription] = useState(asset.item.description);
+  const [voice, setVoice] = useState(asset.kind === "character" ? (asset.item.voice ?? "") : "");
+  const voices = useVoices();
   const [prompt, setPrompt] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -76,7 +79,12 @@ export function AssetEditor({ projectId, storyboard, asset, onClose, onSaved }: 
     run(async () => {
       const next =
         asset.kind === "character"
-          ? replaceCharacter(storyboard, { ...(current as Character), name: name.trim() || id, description })
+          ? replaceCharacter(storyboard, {
+              ...(current as Character),
+              name: name.trim() || id,
+              description,
+              voice: voice || null,
+            })
           : replaceScene(storyboard, { ...(current as Scene), description });
       const saved = await api.saveStoryboard(projectId, next, t("assets.note", { name: name || id }));
       onClose();
@@ -117,6 +125,23 @@ export function AssetEditor({ projectId, storyboard, asset, onClose, onSaved }: 
             <label className="flex flex-col gap-1 text-sm">
               <span className="font-medium text-stone-700">{t("assets.name")}</span>
               <input className={INPUT} value={name} onChange={(event) => setName(event.target.value)} />
+            </label>
+          )}
+          {asset.kind === "character" && (
+            <label className="flex flex-col gap-1 text-sm">
+              <span className="font-medium text-stone-700">{t("voice.label")}</span>
+              {voices && voices.length > 0 ? (
+                <select className={INPUT} value={voice} onChange={(event) => setVoice(event.target.value)}>
+                  <option value="">{t("voice.default")}</option>
+                  {voices.map((v) => (
+                    <option key={v.id} value={v.id}>
+                      {v.name}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <span className="text-xs text-stone-500">{t("voice.none")}</span>
+              )}
             </label>
           )}
           <label className="flex flex-col gap-1 text-sm">

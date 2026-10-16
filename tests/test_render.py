@@ -266,3 +266,126 @@ def test_stale_and_foreign_jobs_are_ignored(engine):
         )
         asyncio.run(render.on_job_finished(session, job))
         assert session.get(Render, "missing") is None
+
+
+def test_new_lines_are_voiced_and_lip_synced_without_regenerating(client, project):
+    def change(doc):
+        doc["shots"][0]["narrative"]["dialogue"] = [
+            {"character_id": "char_1", "text": "Hello there"}
+        ]
+        doc["characters"][0]["voice"] = "Ethan"
+
+    _edit(client, project, change)
+    doc = client.get(f"/api/projects/{project}/storyboard").json()
+    first = doc["shots"][0]["edit"]
+    assert first["voice_changed"] and first["treatment"] == "swap"  # still only a new look
+    base = f"/api/projects/{project}/renders"
+    rid = client.post(base, json={}).json()["id"]
+    _drain(8)
+    shot = client.get(f"{base}/{rid}").json()["shots"]["s001"]
+    assert shot["status"] == "done", shot
+    assert shot["audio"].endswith(".wav") and shot["lipsynced"]
+    with Session(get_engine()) as session:
+        from sqlmodel import select
+
+        from app.models import Job
+
+        tts = session.exec(select(Job).where(Job.capability == "tts")).one()
+        assert tts.request["text"] == "Hello there" and tts.request["voice"] == "Ethan"
+        assert tts.request["language"] == "en"
+    _stitch(project, rid)
+    output = client.get(f"{base}/{rid}").json()["output"]
+    assert probe(project_dir(project) / output).has_audio
+
+
+def test_stitch_mixes_a_voice_over_ducked_audio(tmp_path):
+    source = tmp_path / "source.mp4"
+    subprocess.run(
+        ["ffmpeg", "-v", "error", "-f", "lavfi", "-i", "color=c=red:s=160x120:r=25:d=2"]
+        + [
+            "-f",
+            "lavfi",
+            "-i",
+            "sine=frequency=440:duration=2",
+            "-shortest",
+            "-pix_fmt",
+            "yuv420p",
+            str(source),
+        ],
+        check=True,
+    )
+    voice = tmp_path / "voice.wav"
+    subprocess.run(
+        ["ffmpeg", "-v", "error", "-f", "lavfi", "-i", "sine=frequency=880:duration=3", str(voice)],
+        check=True,
+    )
+    clip = normalize_clip(source, tmp_path / "a.mp4", width=160, height=120, fps=25, duration=1.0)
+    out = stitch(
+        [Segment(clip, 1.0, 0.0, voice=voice), Segment(clip, 1.0, 1.0)],
+        tmp_path / "out.mp4",
+        audio_source=source,
+    )
+    assert probe(out).duration == pytest.approx(2.0, abs=0.1)
+    # A new voice over a shot that has no source audio (a new shot) still works.
+    silent = stitch(
+        [Segment(clip, 1.0, None, voice=voice)], tmp_path / "new.mp4", audio_source=clip
+    )
+    assert probe(silent).has_audio
+
+
+def test_a_second_render_reuses_unchanged_shots(client, project, monkeypatch):
+    from app.providers.mock.adapter import MockAdapter
+
+    base = f"/api/projects/{project}/renders"
+    first = client.post(base, json={}).json()["id"]
+    _drain()
+    _stitch(project, first)
+
+    async def no_calls(self, capability, request):
+        raise AssertionError(f"{capability} was generated again")
+
+    monkeypatch.setattr(MockAdapter, "submit", no_calls)
+    second = client.post(base, json={"approve_frames": False}).json()
+    assert {s["status"] for s in second["shots"].values()} == {"done"}
+    assert all(s["reused"] for s in second["shots"].values())
+
+    # A new line re-voices one shot but still reuses its picture.
+    monkeypatch.undo()
+    monkeypatch.setattr(render, "_ENGINE", None)
+    _stitch(project, second["id"])
+
+    def change(doc):
+        doc["shots"][2]["narrative"]["dialogue"] = [{"text": "Wow"}]
+
+    _edit(client, project, change)
+    third = client.post(base, json={}).json()
+    shot = third["shots"]["s003"]
+    assert shot["reused"] and shot["step"] == "tts" and shot["picture"]
+    assert third["shots"]["s001"]["status"] == "done"
+
+
+def test_skip_a_failed_lip_sync(client, project, monkeypatch):
+    from app.capabilities.base import InputInvalid
+    from app.providers.mock.adapter import MockAdapter
+
+    original = MockAdapter.submit
+
+    async def no_face(self, capability, request):
+        if capability == "lipsync":
+            raise InputInvalid("No face found", provider="mock")
+        return await original(self, capability, request)
+
+    monkeypatch.setattr(MockAdapter, "submit", no_face)
+
+    def change(doc):
+        doc["shots"][0]["narrative"]["dialogue"] = [{"text": "Hi"}]
+
+    _edit(client, project, change)
+    base = f"/api/projects/{project}/renders"
+    rid = client.post(base, json={}).json()["id"]
+    _drain(8)
+    shot = client.get(f"{base}/{rid}").json()["shots"]["s001"]
+    assert shot["status"] == "failed" and shot["step"] == "lipsync"
+    assert client.post(f"{base}/{rid}/shots/s002/skip-lipsync").status_code == 409
+    kept = client.post(f"{base}/{rid}/shots/s001/skip-lipsync").json()["shots"]["s001"]
+    assert kept["status"] == "done" and kept["clip"] == kept["picture"] and kept["audio"]

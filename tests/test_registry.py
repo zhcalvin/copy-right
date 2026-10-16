@@ -37,7 +37,7 @@ def test_preset_regions_match():
 
 def test_implemented_providers():
     implemented = {p.id for p in load_registry().providers.values() if p.implemented}
-    assert implemented == {"mock", "dashscope", "gemini"}
+    assert implemented == {"mock", "dashscope", "gemini", "minimax"}
 
 
 def test_every_implemented_adapter_imports():

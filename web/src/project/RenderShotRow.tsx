@@ -7,7 +7,13 @@ import { labelFor, localized, useI18n } from "../i18n";
 import { BTN_PRIMARY, BTN_SECONDARY, INPUT, INPUT_INLINE, TAG } from "../lib/ui";
 import { TREATMENT_TAG } from "./ShotCard";
 
-const STEP_CAPABILITY = { frame: "image_edit", video: "video_edit_v2v", i2v: "image_to_video" } as const;
+const STEP_CAPABILITY = {
+  frame: "image_edit",
+  video: "video_edit_v2v",
+  i2v: "image_to_video",
+  tts: "tts",
+  lipsync: "lipsync",
+} as const;
 
 interface RenderShotRowProps {
   projectId: string;
@@ -59,6 +65,8 @@ export function RenderShotRow({ projectId, shotId, shot, state, providers, busy,
               : labelFor(t, "render.shot", state.status)}
           </span>
           {state.pieces > 1 && <span className="text-xs text-stone-400">{t("render.pieces", { count: state.pieces })}</span>}
+          {state.reused && <span className={clsx(TAG, "text-stone-600 bg-stone-100")}>♻ {t("render.reused")}</span>}
+          {state.voice && <span className={clsx(TAG, "text-sky-800 bg-sky-100")}>🎙 {t("voice.badge")}</span>}
         </div>
         <p className="text-stone-600 line-clamp-2">{shot?.narrative.description}</p>
 
@@ -115,6 +123,16 @@ export function RenderShotRow({ projectId, shotId, shot, state, providers, busy,
               >
                 {t("render.retry")}
               </button>
+              {state.step === "lipsync" && state.audio && (
+                <button
+                  type="button"
+                  className={BTN_SECONDARY}
+                  disabled={busy}
+                  onClick={() => onAction(`shots/${shotId}/skip-lipsync`)}
+                >
+                  {t("render.skipLipsync")}
+                </button>
+              )}
             </div>
           </div>
         )}

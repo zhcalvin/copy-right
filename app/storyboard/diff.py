@@ -34,7 +34,33 @@ def changed_assets(base: StoryboardDoc, doc: StoryboardDoc) -> set[str]:
 
 
 def _narrative(shot: Shot) -> dict:
-    return shot.narrative.model_dump(mode="json")
+    """The story part of a shot. Who is in it belongs to the assets layer, so a character
+    entry without an action or expression (someone just being there) is left out."""
+    data = shot.narrative.model_dump(mode="json", exclude={"dialogue"})
+    acting = [a for a in data["characters"] if a.get("action") or a.get("expression")]
+    return {**data, "characters": acting}
+
+
+def _lines(shot: Shot) -> list[tuple[str | None, str]]:
+    return [(line.character_id, line.text.strip()) for line in shot.narrative.dialogue]
+
+
+def voice_changed(base: Shot | None, shot: Shot, revoiced: set[str]) -> bool:
+    """New or changed spoken lines, or a speaker whose voice changed (``revoiced``).
+    Dialogue is not part of the narrative layer: new words need a new voice and mouth,
+    not a new picture."""
+    if not shot.narrative.dialogue:
+        return False
+    if base is None or _lines(base) != _lines(shot):
+        return True
+    return any(line.character_id in revoiced for line in shot.narrative.dialogue)
+
+
+def revoiced_characters(base: StoryboardDoc, doc: StoryboardDoc) -> set[str]:
+    voices = {c.character_id: c.voice for c in base.characters}
+    return {
+        c.character_id for c in doc.characters if c.voice and c.voice != voices.get(c.character_id)
+    }
 
 
 def _assets(shot: Shot) -> dict:
@@ -66,6 +92,7 @@ def refresh_edits(base: StoryboardDoc, doc: StoryboardDoc) -> StoryboardDoc:
     """
     base_shots = {s.shot_id: s for s in base.shots}
     swapped = changed_assets(base, doc)
+    revoiced = revoiced_characters(base, doc)
     shots = []
     for shot in doc.shots:
         origin = base_shots.get(shot.shot_id)
@@ -88,6 +115,7 @@ def refresh_edits(base: StoryboardDoc, doc: StoryboardDoc) -> StoryboardDoc:
                             "changed_layers": layers,
                             "treatment": treatment,
                             "treatment_reason": reason,
+                            "voice_changed": voice_changed(origin, shot, revoiced),
                         }
                     )
                 }

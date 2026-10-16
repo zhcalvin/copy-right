@@ -11,11 +11,13 @@ Video understanding verified against https://help.aliyun.com/zh/model-studio/vis
   abnormal"), while plain prompting returned complete JSON.
 """
 
+import asyncio
 import math
 from pathlib import Path
 from typing import Any, ClassVar
 
 from app.capabilities import llm_text
+from app.capabilities.audio import LipsyncRequest, SpeechRequest, parse_lipsync, parse_speech
 from app.capabilities.base import (
     Artifact,
     Capability,
@@ -40,7 +42,7 @@ from app.capabilities.video_understanding import (
 )
 from app.providers.dashscope import native
 from app.providers.http import InlineAdapter, data_url, send
-from app.tools.media import MediaError, probe
+from app.tools.media import MediaError, fit_video, probe
 
 MIN_FRAMES = 4
 FPS_RANGE = (0.1, 10.0)
@@ -51,7 +53,13 @@ ANIMATE_MODES = {"standard": "wan-std", "pro": "wan-pro"}
 EDIT_RESOLUTION = {"standard": "720P", "pro": "1080P"}
 # Wan image-to-video takes whole seconds; shorter shots are generated longer and trimmed.
 I2V_DURATION_S = (2, 15)
-ASYNC_CAPABILITIES = frozenset({Capability.VIDEO_EDIT_V2V, Capability.IMAGE_TO_VIDEO})
+ASYNC_CAPABILITIES = frozenset(
+    {Capability.VIDEO_EDIT_V2V, Capability.IMAGE_TO_VIDEO, Capability.LIPSYNC}
+)
+# VideoRetalk wants 2–120 s clips with sides of 640–2048 px.
+LIPSYNC_MIN_SIDE = 640
+LIPSYNC_MIN_S = 2.0
+TTS_LANGUAGES = {"en": "English", "zh-CN": "Chinese"}
 
 
 def _frames(paths: list[str]) -> list[str]:
@@ -76,6 +84,8 @@ class DashScopeAdapter(InlineAdapter):
             Capability.IMAGE_EDIT,
             Capability.VIDEO_EDIT_V2V,
             Capability.IMAGE_TO_VIDEO,
+            Capability.TTS,
+            Capability.LIPSYNC,
         }
     )
 
@@ -97,6 +107,8 @@ class DashScopeAdapter(InlineAdapter):
     async def run(self, capability: Capability, request: dict[str, Any]) -> Artifact:
         if capability == Capability.LLM_TEXT:
             return await self._text(llm_text.parse_request(request, provider=self.provider_id))
+        if capability == Capability.TTS:
+            return await self._speak(parse_speech(request, provider=self.provider_id))
         if capability == Capability.IMAGE_EDIT:
             return await self._edit_image(
                 parse(ImageEditRequest, request, provider=self.provider_id)
@@ -112,7 +124,9 @@ class DashScopeAdapter(InlineAdapter):
     async def submit(self, capability: Capability, request: dict[str, Any]) -> JobHandle:
         if capability not in ASYNC_CAPABILITIES:
             return await super().submit(capability, request)
-        if capability == Capability.IMAGE_TO_VIDEO:
+        if capability == Capability.LIPSYNC:
+            task_id = await self._start_lipsync(parse_lipsync(request, provider=self.provider_id))
+        elif capability == Capability.IMAGE_TO_VIDEO:
             task_id = await self._start_i2v(
                 parse(ImageToVideoRequest, request, provider=self.provider_id)
             )
@@ -248,6 +262,68 @@ class DashScopeAdapter(InlineAdapter):
         if not task_id:
             raise InputInvalid("The provider did not return a task id", provider=self.provider_id)
         return task_id
+
+    async def _start_lipsync(self, request: LipsyncRequest) -> str:
+        model = self.require_model()
+        video = Path(request.video)
+        try:
+            prepared = await asyncio.to_thread(
+                fit_video, video, min_side=LIPSYNC_MIN_SIDE, min_duration=LIPSYNC_MIN_S
+            )
+        except MediaError as exc:
+            raise InputInvalid(
+                f"Cannot prepare the clip: {exc}", provider=self.provider_id
+            ) from exc
+        headers = self._headers()
+        upload = native.upload_temporary
+        video_url = await upload(self.http(), self._native(), headers, model, prepared)
+        audio_url = await upload(self.http(), self._native(), headers, model, Path(request.audio))
+        body_input: dict[str, Any] = {"video_url": video_url, "audio_url": audio_url}
+        if request.face_image:
+            body_input["ref_image_url"] = await upload(
+                self.http(), self._native(), headers, model, Path(request.face_image)
+            )
+        response = await send(
+            self.http(),
+            self.provider_id,
+            "POST",
+            f"{self._native()}/services/aigc/image2video/video-synthesis",
+            headers={
+                **headers,
+                "X-DashScope-Async": "enable",
+                "X-DashScope-OssResourceResolve": "enable",
+            },
+            json={"model": model, "input": body_input, "parameters": {"video_extension": True}},
+        )
+        task_id = (response.json().get("output") or {}).get("task_id")
+        if not task_id:
+            raise InputInvalid("The provider did not return a task id", provider=self.provider_id)
+        return task_id
+
+    # -- speech (synchronous) ---------------------------------------------------------
+
+    async def _speak(self, request: SpeechRequest) -> Artifact:
+        text_input: dict[str, Any] = {"text": request.text, "voice": request.voice or "Cherry"}
+        if request.language in TTS_LANGUAGES:
+            text_input["language_type"] = TTS_LANGUAGES[request.language]
+        response = await send(
+            self.http(),
+            self.provider_id,
+            "POST",
+            f"{self._native()}/services/aigc/multimodal-generation/generation",
+            headers=self._headers(),
+            json={"model": self.require_model(), "input": text_input},
+        )
+        body = response.json()
+        url = ((body.get("output") or {}).get("audio") or {}).get("url")
+        if not url:
+            raise InputInvalid("Speech synthesis returned no audio", provider=self.provider_id)
+        return Artifact(
+            kind="audio",
+            uri=url,
+            mime_type="audio/wav",
+            meta={"model": self.model, "usage": body.get("usage")},
+        )
 
     # -- text (synchronous) -----------------------------------------------------------
 

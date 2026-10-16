@@ -30,7 +30,9 @@ export function RenderPanel({ project, storyboard, render, onRender }: RenderPan
     api.providers().then(setProviders).catch(() => undefined);
   }, []);
 
-  const paid = storyboard.shots.filter((s) => PAID_TREATMENTS.has(s.edit.treatment));
+  const paid = storyboard.shots.filter(
+    (s) => PAID_TREATMENTS.has(s.edit.treatment) || (s.edit.voice_changed && s.edit.treatment !== "removed"),
+  );
   const counts = paid.reduce<Partial<Record<Treatment, number>>>(
     (acc, s) => ({ ...acc, [s.edit.treatment]: (acc[s.edit.treatment] ?? 0) + 1 }),
     {},
@@ -140,7 +142,7 @@ interface RenderProgressProps {
 function RenderProgress({ project, storyboard, render, providers, busy, error, onAction, onNew }: RenderProgressProps) {
   const { t } = useI18n();
   const shots = useMemo(() => new Map(storyboard.shots.map((s) => [s.shot_id, s])), [storyboard.shots]);
-  const entries = Object.entries(render.shots).filter(([, s]) => PAID_TREATMENTS.has(s.treatment));
+  const entries = Object.entries(render.shots).filter(([, s]) => PAID_TREATMENTS.has(s.treatment) || s.voice);
   const done = entries.filter(([, s]) => s.status === "done").length;
   const waitingFrames = entries.filter(([, s]) => s.status === "frame_ready").length;
   const active = isActive(render);

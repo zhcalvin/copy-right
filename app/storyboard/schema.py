@@ -95,6 +95,9 @@ class ShotEdit(BaseModel):
     treatment_reason: str | None = None
     trim: Trim | None = None
     instruction: str | None = None
+    # The spoken lines (or a speaker's voice) changed: the shot is re-voiced with tts and
+    # lip-synced, whatever happens to its picture.
+    voice_changed: bool = False
 
 
 class ShotGeneration(BaseModel):

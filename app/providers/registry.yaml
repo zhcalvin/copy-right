@@ -39,7 +39,7 @@ providers:
     description: Qwen-VL, Qwen, Wan and Paraformer. One key covers several capabilities.
     i18n: {zh-CN: {name: 阿里云百炼, description: 通义千问 VL / 通义千问 / 通义万相 / Paraformer，一个 key 覆盖多个能力。}}
     docs: https://help.aliyun.com/zh/model-studio/
-    capabilities: [video_understanding, llm_text, image_edit, video_edit_v2v, image_to_video, tts, asr]
+    capabilities: [video_understanding, llm_text, image_edit, video_edit_v2v, image_to_video, tts, lipsync, asr]
     credentials:
       - {name: api_key, label: API Key, env: DASHSCOPE_API_KEY}
       # Beijing workspaces may use https://{WorkspaceId}.cn-beijing.maas.aliyuncs.com/compatible-mode/v1
@@ -75,6 +75,24 @@ providers:
       image_to_video:
         - {id: wan2.6-i2v, name: Wan 2.6 image to video}
         - {id: wan2.6-i2v-flash, name: Wan 2.6 image to video (flash)}
+      # https://help.aliyun.com/zh/model-studio/qwen-tts-api (2026-10-16): up to 600 chars.
+      tts:
+        - {id: qwen3-tts-flash, name: Qwen3 TTS Flash}
+      # https://help.aliyun.com/zh/model-studio/videoretalk-api (2026-10-16): 2–120 s
+      # clips, sides 640–2048 px, one task at a time.
+      lipsync:
+        - {id: videoretalk, name: VideoRetalk lip-sync}
+    voices:
+      - {id: Cherry, name: Cherry 芊悦, gender: female, languages: [zh-CN, en]}
+      - {id: Ethan, name: Ethan 晨煦, gender: male, languages: [zh-CN, en]}
+      - {id: Serena, name: Serena 苏瑶, gender: female, languages: [zh-CN, en]}
+      - {id: Ryan, name: Ryan 甜茶, gender: male, languages: [zh-CN, en]}
+      - {id: Jennifer, name: Jennifer (American English), gender: female, languages: [en, zh-CN]}
+      - {id: Aiden, name: Aiden (American English), gender: male, languages: [en, zh-CN]}
+      - {id: Neil, name: Neil 阿闻, gender: male, languages: [zh-CN, en]}
+      - {id: Katerina, name: Katerina 卡捷琳娜, gender: female, languages: [zh-CN, en]}
+      - {id: Dylan, name: Dylan 北京-晓东, gender: male, languages: [zh-CN]}
+      - {id: Rocky, name: Rocky 粤语-阿强, gender: male, languages: [zh-CN]}
     connection_test:
       url: "{base_url}/models"
       headers: {Authorization: "Bearer {api_key}"}
@@ -112,7 +130,7 @@ providers:
   minimax:
     name: MiniMax
     region: cn
-    adapter: null
+    adapter: app.providers.minimax.adapter:MiniMaxAdapter
     description: Speech synthesis with voice cloning, Hailuo video.
     i18n: {zh-CN: {name: MiniMax, description: 语音合成与音色克隆、海螺视频。}}
     docs: https://platform.minimaxi.com/document
@@ -120,7 +138,22 @@ providers:
     credentials:
       - {name: api_key, label: API Key, env: MINIMAX_API_KEY}
       - {name: base_url, label: Base URL, secret: false, required: false, env: MINIMAX_BASE_URL, default: "https://api.minimax.cn"}
-    models: {}
+    # https://platform.minimax.cn/docs/api-reference/speech-t2a-http (2026-10-16).
+    # Implemented: tts. Hailuo video is not wired up yet.
+    models:
+      tts:
+        - {id: speech-2.8-hd, name: Speech 2.8 HD}
+        - {id: speech-2.8-turbo, name: Speech 2.8 Turbo (faster)}
+    voices:
+      - {id: male-qn-jingying, name: 精英青年 (male), gender: male, languages: [zh-CN]}
+      - {id: female-shaonv, name: 少女 (female), gender: female, languages: [zh-CN]}
+      - {id: presenter_male, name: 男性主持人, gender: male, languages: [zh-CN]}
+      - {id: presenter_female, name: 女性主持人, gender: female, languages: [zh-CN]}
+      - {id: "Chinese (Mandarin)_Lyrical_Voice", name: Lyrical voice (Mandarin), gender: female, languages: [zh-CN]}
+      - {id: English_Persuasive_Man, name: Persuasive man (English), gender: male, languages: [en]}
+      - {id: English_Insightful_Speaker, name: Insightful speaker (English), gender: male, languages: [en]}
+      - {id: English_Graceful_Lady, name: Graceful lady (English), gender: female, languages: [en]}
+      - {id: English_radiant_girl, name: Radiant girl (English), gender: female, languages: [en]}
     connection_test:
       url: "{base_url}/v1/models"
       headers: {Authorization: "Bearer {api_key}"}

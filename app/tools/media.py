@@ -354,11 +354,46 @@ def label_clip(source: Path, out: Path, text: str) -> Path:
 @dataclass(frozen=True)
 class Segment:
     """One stretch of the output: a normalized clip, and where its sound comes from.
-    ``audio_start`` is a time in the source video; ``None`` means silence."""
+    ``audio_start`` is a time in the source video; ``None`` means silence. ``voice`` is a
+    new dialogue track laid over the original sound, which is turned down under it."""
 
     clip: Path
     duration: float
     audio_start: float | None
+    voice: Path | None = None
+
+
+# How loud the original sound stays under a new voice. Without source separation the old
+# dialogue is still in there, so it is ducked rather than kept at full volume.
+DUCKED_VOLUME = 0.25
+
+
+def _audio_graph(segments: list[Segment], has_source: bool, voice_inputs: dict[int, int]) -> str:
+    """One audio stretch per segment (source audio, silence, or either with a new voice
+    on top), concatenated. ``voice_inputs`` maps a segment index to its ffmpeg input."""
+    fmt = "aresample=44100,aformat=channel_layouts=stereo"
+    parts, labels = [], []
+    for index, seg in enumerate(segments):
+        length = f"{seg.duration:.3f}"
+        if seg.audio_start is not None and has_source:
+            end = seg.audio_start + seg.duration
+            base = (
+                f"[1:a]atrim=start={seg.audio_start:.3f}:end={end:.3f},asetpts=PTS-STARTPTS,"
+                f"{fmt},apad=whole_dur={length}"
+            )
+        else:
+            base = f"anullsrc=r=44100:cl=stereo,atrim=duration={length}"
+        if seg.voice is None:
+            parts.append(f"{base}[a{index}]")
+        else:
+            voice = voice_inputs[index]
+            parts.append(f"{base},volume={DUCKED_VOLUME}[b{index}]")
+            parts.append(
+                f"[{voice}:a]{fmt},apad=whole_dur={length},atrim=duration={length}[v{index}]"
+            )
+            parts.append(f"[b{index}][v{index}]amix=inputs=2:duration=first:normalize=0[a{index}]")
+        labels.append(f"[a{index}]")
+    return ";".join(parts) + f";{''.join(labels)}concat=n={len(labels)}:v=0:a=1[a]"
 
 
 def stitch(
@@ -375,29 +410,21 @@ def stitch(
     out.parent.mkdir(parents=True, exist_ok=True)
     video_only = out.with_name(out.stem + ".video.mp4")
     concat_clips([s.clip for s in segments], video_only)
-    if audio_source is None or not probe(audio_source).has_audio:
+    has_source_audio = audio_source is not None and probe(audio_source).has_audio
+    voiced = [i for i, seg in enumerate(segments) if seg.voice is not None]
+    if not has_source_audio and not voiced:
         args = ["-i", str(video_only), "-c:v", "copy"]
     else:
-        parts, labels = [], []
-        for index, segment in enumerate(segments):
-            if segment.audio_start is None:
-                parts.append(
-                    f"anullsrc=r=44100:cl=stereo,atrim=duration={segment.duration:.3f}[a{index}]"
-                )
-            else:
-                end = segment.audio_start + segment.duration
-                parts.append(
-                    f"[1:a]atrim=start={segment.audio_start:.3f}:end={end:.3f},"
-                    f"asetpts=PTS-STARTPTS,aresample=44100,"
-                    f"aformat=channel_layouts=stereo,apad=whole_dur={segment.duration:.3f}[a{index}]"
-                )
-            labels.append(f"[a{index}]")
-        graph = ";".join(parts) + f";{''.join(labels)}concat=n={len(labels)}:v=0:a=1[a]"
+        inputs = ["-i", str(video_only)]
+        if has_source_audio:
+            inputs += ["-i", str(audio_source)]
+        first_voice = len(inputs) // 2
+        voice_inputs = {seg: first_voice + n for n, seg in enumerate(voiced)}
+        for seg in voiced:
+            inputs += ["-i", str(segments[seg].voice)]
+        graph = _audio_graph(segments, has_source_audio, voice_inputs)
         args = [
-            "-i",
-            str(video_only),
-            "-i",
-            str(audio_source),
+            *inputs,
             "-filter_complex",
             graph,
             "-map",
@@ -415,4 +442,43 @@ def stitch(
         _run(["ffmpeg", "-v", "error", "-y", *args, *metadata, "-movflags", "+faststart", str(out)])
     finally:
         video_only.unlink(missing_ok=True)
+    return out
+
+
+def fit_video(source: Path, *, min_side: int, min_duration: float) -> Path:
+    """A copy of ``source`` scaled up so its shorter side is at least ``min_side`` and
+    padded to ``min_duration``, with its audio dropped; ``source`` itself if it fits."""
+    info = probe(source)
+    short_side = min(info.width, info.height)
+    if short_side >= min_side and info.duration >= min_duration:
+        return source
+    scale = max(1.0, min_side / max(short_side, 1))
+    width = int(info.width * scale + 1) // 2 * 2
+    height = int(info.height * scale + 1) // 2 * 2
+    out = source.with_name(f"{source.stem}.fit.mp4")
+    duration = max(info.duration, min_duration)
+    _run(
+        [
+            "ffmpeg",
+            "-v",
+            "error",
+            "-y",
+            "-i",
+            str(source),
+            "-vf",
+            f"scale={width}:{height},tpad=stop_mode=clone:stop_duration={duration:.3f}",
+            "-t",
+            f"{duration:.3f}",
+            "-an",
+            "-c:v",
+            "libx264",
+            "-preset",
+            "veryfast",
+            "-crf",
+            "18",
+            "-pix_fmt",
+            "yuv420p",
+            str(out),
+        ]
+    )
     return out

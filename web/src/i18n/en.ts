@@ -304,6 +304,20 @@ export const en = {
   "render.status.done": "Done",
   "render.status.failed": "Failed",
   "render.status.cancelled": "Stopped",
+  "assets.add": "Add",
+  "assets.addCharacter": "Add a character",
+  "assets.addPlaceholder": "New character, e.g. Woman in green",
+  "assets.addedNote": "Added {name}",
+  "voice.badge": "New voice",
+  "voice.hint": "The lines changed: they are spoken again and the mouth is lip-synced, without regenerating the picture.",
+  "voice.label": "Voice",
+  "voice.default": "Provider default",
+  "voice.none": "Turn on Voice-over in Settings to give characters a voice.",
+  "render.step.tts": "Recording the new lines…",
+  "render.step.lipsync": "Lip-syncing…",
+  "render.skipLipsync": "Keep the voice without lip-sync",
+  "render.reused": "Reused",
+  "editor.line": "Line",
 } as const;
 
 export type MessageKey = keyof typeof en;

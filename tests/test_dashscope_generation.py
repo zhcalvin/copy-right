@@ -12,7 +12,7 @@ from app.capabilities.base import (
 )
 from app.providers.dashscope import native
 from app.providers.dashscope.adapter import DashScopeAdapter
-from app.tools.media import cut_clip
+from app.tools.media import cut_clip, probe
 
 SECRET = "sk-test-abcdefgh1234"
 CREDS = {"api_key": SECRET, "base_url": "https://ds.example/compatible-mode/v1"}
@@ -269,3 +269,44 @@ async def test_llm_text_uses_chat_completions_with_json_mode():
     assert body["response_format"] == {"type": "json_object"} and body["model"] == "qwen-text"
     with pytest.raises(InputInvalid):
         await adapter.submit(Capability.LLM_TEXT, {"prompt": ""})
+
+
+async def test_speech_returns_the_audio_url():
+    path = "/api/v1/services/aigc/multimodal-generation/generation"
+    reply = {"output": {"audio": {"url": "https://cdn/a.wav"}}, "usage": {"characters": 5}}
+    recorder = Recorder({("POST", path): httpx.Response(200, json=reply)})
+    adapter = recorder.adapter("qwen3-tts-flash")
+    handle = await adapter.submit(
+        Capability.TTS, {"text": "你好", "voice": "Ethan", "language": "zh-CN"}
+    )
+    artifact = await adapter.fetch_result(handle)
+    assert artifact.uri == "https://cdn/a.wav" and artifact.kind == "audio"
+    body = json.loads(recorder.sent(path).content)
+    assert body["input"] == {"text": "你好", "voice": "Ethan", "language_type": "Chinese"}
+    empty = Recorder({("POST", path): httpx.Response(200, json={"output": {}})}).adapter("m")
+    with pytest.raises(InputInvalid, match="no audio"):
+        await empty.submit(Capability.TTS, {"text": "hi"})
+
+
+async def test_lipsync_upscales_small_clips_and_uploads_both(sample_video, tmp_path):
+    audio = tmp_path / "voice.wav"
+    audio.write_bytes(b"RIFF fake")
+    path = "/api/v1/services/aigc/image2video/video-synthesis"
+    recorder = Recorder(
+        {
+            ("GET", "/api/v1/uploads"): httpx.Response(200, json=POLICY),
+            ("POST", "/"): httpx.Response(200),
+            ("POST", path): httpx.Response(200, json={"output": {"task_id": "lip-1"}}),
+        }
+    )
+    adapter = recorder.adapter("videoretalk")
+    handle = await adapter.submit(
+        Capability.LIPSYNC, {"video": str(sample_video), "audio": str(audio)}
+    )
+    assert handle.external_id == "lip-1"
+    body = json.loads(recorder.sent(path).content)
+    assert body["input"]["video_url"].endswith(".fit.mp4")  # 160x120 was scaled up
+    assert body["input"]["audio_url"].endswith("voice.wav")
+    assert body["parameters"] == {"video_extension": True}
+    fitted = sample_video.with_name(f"{sample_video.stem}.fit.mp4")
+    assert min(probe(fitted).width, probe(fitted).height) >= 640
